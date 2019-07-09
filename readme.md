@@ -14,7 +14,7 @@ glide get github.com/zzerroo/zlimiter
 
 ## Usage
 
-基于内存：
+local memory：
 
 ```go
  key := "test" 
@@ -49,7 +49,7 @@ glide get github.com/zzerroo/zlimiter
 
 
 
-基于Redis：
+redis：
 
 ```go
 	key := "test"
@@ -83,7 +83,7 @@ glide get github.com/zzerroo/zlimiter
 
 
 
-- [beego中使用](./example/beego/beego.go)
-- [echo中使用](./example/echo/echo.go)
-- [gin中使用](./example/gin/gin.go)
-- [http使用](./example/http/http.go)
+- [beego](./example/beego/beego.go)
+- [echo](./example/echo/echo.go)
+- [gin](./example/gin/gin.go)
+- [http](./example/http/http.go)
