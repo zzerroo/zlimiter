@@ -4,7 +4,7 @@ import (
 	"sync"
 	"testing"
 	"time"
-	"zlimiter"
+	"github.com/zzerroo/zlimiter"
 )
 
 func TestMem(t *testing.T) {

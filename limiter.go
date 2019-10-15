@@ -2,7 +2,7 @@ package zlimiter
 
 import (
 	"time"
-	"zlimiter/driver"
+	"github.com/zzerroo/zlimiter/driver"
 )
 
 const (

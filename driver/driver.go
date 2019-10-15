@@ -5,8 +5,8 @@ import (
 	"log"
 	"sync"
 	"time"
-	cache "zlimiter/driver/memory"
-	rds "zlimiter/driver/redis"
+	cache "github.com/zzerroo/zlimiter/driver/memory"
+	rds "github.com/zzerroo/zlimiter/driver/redis"
 
 	"github.com/gomodule/redigo/redis"
 )

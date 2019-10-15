@@ -4,8 +4,8 @@ import (
 	"sync"
 	"testing"
 	"time"
-	"zlimiter"
-	"zlimiter/driver"
+	"github.com/zzerroo/zlimiter"
+	"github.com/zzerroo/zlimiter/driver"
 )
 
 func TestAll(t *testing.T) {
