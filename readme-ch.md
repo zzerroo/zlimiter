@@ -9,7 +9,7 @@ LIMIT_TYPE_REDIS模式利用了redis的线程安全、过期等机制，为了�
 
 ## Install
 
-glide get github.com/zzerroo/zlimiter
+go get github.com/zzerroo/zlimiter
 
 ## Usage
 

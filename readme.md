@@ -10,7 +10,7 @@ LIMIT_TYPE_REDIS mode is based on the redis for thread safe and expiration .In o
 
 ## Install
 
-glide get github.com/zzerroo/zlimiter
+go get github.com/zzerroo/zlimiter
 
 ## Usage
 
