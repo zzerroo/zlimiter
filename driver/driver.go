@@ -3,8 +3,9 @@ package driver
 import (
 	"errors"
 	"log"
-	"sync"
 	"time"
+
+	"github.com/zzerroo/zlimiter/driver/common"
 	cache "github.com/zzerroo/zlimiter/driver/memory"
 	rds "github.com/zzerroo/zlimiter/driver/redis"
 
@@ -29,17 +30,21 @@ const (
 	REDIS_DEL_SCRIPT       = "DEL"
 	REDIS_GET_SCRIPT       = "GET"
 	REDIS_SET_SCRIPT       = "SET"
-)
 
-type Driver struct {
-	mpData map[string]LimitInfo
-	rwMut  sync.RWMutex
-}
+	LIMIT_TYPE_REDIS              = 1
+	LIMIT_TYPE_CACHE_FIX_WINDOW   = 2
+	LIMIT_TYPE_CACHE_SLIDE_WINDOW = 3
+)
 
 type LimitInfo struct {
 	limits      int64
 	tmDuriation time.Duration
 }
+
+// type Driver struct {
+// 	mpData map[string]LimitInfo
+// 	rwMut  sync.RWMutex
+// }
 
 // RedisInfo ...
 type RedisInfo struct {
@@ -49,50 +54,69 @@ type RedisInfo struct {
 
 type DriverI interface {
 	Init(...interface{}) error
-	Add(string, int64, time.Duration) error
+	Add(string, int64, time.Duration, ...interface{}) error
 	Get(string) (bool, int64, error)
-	Set(string, int64, time.Duration) error
+	Set(string, int64, time.Duration, ...interface{}) error
 	Delete(string) error
 }
 
 type MemDriver struct {
-	Driver
-	MemCache *cache.Cache
+	MemCache cache.Cache
 }
 
 type RedisDriver struct {
-	Driver
+	//Driver
 	script      map[string]*redis.Script
 	RedisClient *redis.Pool
 }
 
 // Init create a buffer cache
 func (m *MemDriver) Init(args ...interface{}) error {
-	m.MemCache = cache.New(DEFAULT_CACHE_EXPIRE, DEFAULT_PURGES_EXPIRE)
+	if len(args) != 1 {
+		log.Fatalf("%s:%v", common.ErrorInputParam, args)
+	}
+
+	limiterType, ok := args[0].(int64)
+	if !ok {
+		log.Fatalf("%s:%v", common.ErrorInputParam, args)
+	}
+
+	if limiterType == common.LimitTypeFixWindow {
+		m.MemCache = new(cache.CacheFixWindow)
+	} else if limiterType == common.LimitTypeSlideWindow {
+		m.MemCache = new(cache.CacheSlideWindow)
+	} else if limiterType == common.LimitTypeBucket {
+		m.MemCache = new(cache.Bucket)
+	} else if limiterType == common.LimitTypeToken {
+		m.MemCache = new(cache.Token)
+	} else {
+		log.Fatal("%s", common.ErrorInputParam)
+	}
+
+	m.MemCache.Init()
 	return nil
 }
 
 // Add an item with limit and tmDuriation to the buffer cache
-func (m *MemDriver) Add(key string, limits int64, tmDuriation time.Duration) error {
-	return m.MemCache.Add(key, limits, tmDuriation)
+func (m *MemDriver) Add(key string, limits int64, tmDuriation time.Duration, others ...interface{}) error {
+	return m.MemCache.Add(key, limits, tmDuriation, others...)
 }
 
 // Get the left times from cache, if left < 0 then return true
 func (m *MemDriver) Get(key string) (bool, int64, error) {
-	left, erro := m.MemCache.DecrementInt64(key, 1)
-	return left < 0, left, erro
+	return m.MemCache.Get(key)
 }
 
 // Set a new item (limit,tmDuriation) to the cache, a new item will be created
 // if item with key is not exist
-func (m *MemDriver) Set(key string, limits int64, tmDuriation time.Duration) error {
-	m.MemCache.Set(key, limits, tmDuriation)
+func (m *MemDriver) Set(key string, limits int64, tmDuriation time.Duration, others ...interface{}) error {
+	m.MemCache.Set(key, limits, tmDuriation, others...)
 	return nil
 }
 
 // Delete the item
 func (m *MemDriver) Delete(key string) error {
-	m.MemCache.Delete(key)
+	m.MemCache.Del(key)
 	return nil
 }
 
@@ -177,7 +201,7 @@ func (r *RedisDriver) scriptLoaded(conn redis.Conn, sha1Str string) (int, error)
 }
 
 // Add a limit item with (key,limit,duration)
-func (r *RedisDriver) Add(key string, limit int64, tmDuration time.Duration) error {
+func (r *RedisDriver) Add(key string, limit int64, tmDuration time.Duration, others ...interface{}) error {
 	conn := r.RedisClient.Get()
 	defer conn.Close()
 
@@ -202,7 +226,7 @@ func (r *RedisDriver) Get(key string) (bool, int64, error) {
 }
 
 // Set update or insert a new item,this will update the limit counter
-func (r *RedisDriver) Set(key string, limit int64, tmDuration time.Duration) error {
+func (r *RedisDriver) Set(key string, limit int64, tmDuration time.Duration, others ...interface{}) error {
 	conn := r.RedisClient.Get()
 	defer conn.Close()
 

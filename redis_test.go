@@ -4,14 +4,15 @@ import (
 	"sync"
 	"testing"
 	"time"
+
 	"github.com/zzerroo/zlimiter"
-	"github.com/zzerroo/zlimiter/driver"
+	rds "github.com/zzerroo/zlimiter/driver/redis"
 )
 
 func TestAll(t *testing.T) {
 
 	key := "test"
-	redisLimit, erro := zlimiter.NewLimiter(zlimiter.LIMIT_TYPE_REDIS, driver.RedisInfo{Host: "10.96.81.176:6379", Passwd: "my_redis"})
+	redisLimit, erro := zlimiter.NewLimiter(zlimiter.LimitRedisSlideWindow, rds.RedisInfo{Address: "127.0.0.1:6379", Passwd: "test"})
 	if erro != nil {
 		t.Error(erro.Error())
 	}
@@ -73,7 +74,7 @@ func TestAll(t *testing.T) {
 	}
 
 	// Test Del
-	erro = redisLimit.Delete(key)
+	erro = redisLimit.Del(key)
 	if erro != nil {
 		t.Error(erro.Error())
 	}

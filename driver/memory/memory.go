@@ -48,15 +48,6 @@ type bucketItemCnt struct {
 	WaitQueue chan struct{}
 }
 
-// Cache ...
-type Cache interface {
-	Init() error
-	Add(string, int64, time.Duration, ...interface{}) error
-	Set(string, int64, time.Duration, ...interface{}) error
-	Del(string) error
-	Get(string) (bool, int64, error)
-}
-
 // CacheFixWindow  ...
 type CacheFixWindow struct {
 	items map[string]fixWindowItem
@@ -83,25 +74,25 @@ type Token struct {
 }
 
 // Init ...
-func (c *CacheSlideWindow) Init() error {
+func (c *CacheSlideWindow) Init(...interface{}) error {
 	c.items = make(map[string]slideWindowItem)
 	return nil
 }
 
 // Init ...
-func (c *CacheFixWindow) Init() error {
+func (c *CacheFixWindow) Init(...interface{}) error {
 	c.items = make(map[string]fixWindowItem)
 	return nil
 }
 
 // Init ...
-func (b *Bucket) Init() error {
+func (b *Bucket) Init(...interface{}) error {
 	b.items = make(map[string]bucketItem)
 	return nil
 }
 
 // Init ...
-func (t *Token) Init() error {
+func (t *Token) Init(...interface{}) error {
 	t.items = make(map[string]tokenItem)
 	return nil
 }
