@@ -14,6 +14,7 @@ const (
 	RedisGetScript = 302
 	RedisSetScript = 303
 	RedisDelScript = 304
+	ReidsChkScript = 305
 
 	ErrorUnknown      = "error unkown error"
 	ErrorInputParam   = "error bad input param"
