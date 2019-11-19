@@ -207,6 +207,7 @@ func TestRedisToken(t *testing.T) {
 	if reached == true || left != 0 || erro != nil {
 		t.Errorf("%v,%v,%v,should be false, 0, nil", reached, left, erro)
 	}
+	
 
 	// reached,left == true,-1
 	reached, left, erro = redisLimit.Get(key)

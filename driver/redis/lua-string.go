@@ -1,11 +1,13 @@
 package redis
 
 const (
-	// FixAddStr : fix window add lua str
-	// key: the redis key
-	// limit: count of limit within the duration
-	// duration: the time span
-	// current: current time (ms)
+	// FixAddStr : fix window lua add script, add a hash key with limit、duration、idx、start、wdwcnt props
+	//	idx is the window index, start is the init time of the key, wdwcnt is the request cnt within the window
+	// Input:
+	// 	key: the redis key
+	// 	limit: count of limit within the duration
+	// 	duration: the time span
+	// 	current: current time (μs)
 	FixAddStr = `
 local key = KEYS[1] --key
 local limit = tonumber(ARGV[1]) --限流大小
@@ -13,10 +15,10 @@ local duration = tonumber(ARGV[2]) --时长
 local current = tonumber(ARGV[3]) --current timestamp
 redis.call('HMSET',key,'limit',limit,'duration',duration,'idx',0,'start',current,'wdwcnt',0)
 `
-	// FixGetStr : fix window get lua str
+	// FixGetStr : fix window lua get script, this script check the request cnt within the index window
 	// Input:
 	//  key: the redis key
-	//	current: current time (ms)
+	//	current: current time (μs)
 	// Output:
 	// 0 : ok
 	// -1 : requests has exceeded the limit
@@ -55,21 +57,22 @@ redis.call('HMSET',key,'limit',limit,'duration',duration,'idx',curlIdx,'wdwcnt',
 return retValue
 `
 
-	// FixSetStr : fix window set lua string,see FixAddStr
+	// FixSetStr : fix window lua set script,see FixAddStr
 	FixSetStr = FixAddStr
 
-	// FixDelStr : del lua string for fix window
+	// FixDelStr : fix window lua del script
 	// Input:
 	// 		key : the redis key
 	FixDelStr = `
 local key = KEYS[1] --key
 redis.call('HDEL',key,'limit','duration','idx','start','wdwcnt')
 `
-	// SlideAddStr : slide window add lua string
-	// key : redis key
-	// limit : limit request count between the time span
-	// duration : the time span
-	// current : current time (ms)
+	// SlideAddStr : slide window lua add script
+	// Input:
+	//	key : redis key
+	// 	limit : limit request count between the time span
+	// 	duration : the time span
+	// 	current : current time (μs)
 	SlideAddStr = `
 local key = KEYS[1] --key
 local limit = tonumber(ARGV[1]) --限流大小
@@ -77,7 +80,7 @@ local duration = tonumber(ARGV[2]) --时长
 local current = tonumber(ARGV[3]) --current timestamp
 redis.call('HMSET',key,'limit',limit,'duration',duration)
 `
-	// SlideSetStr : set lua string for slide window, see SlideAddStr
+	// SlideSetStr : slide window lua set string, see SlideAddStr
 	SlideSetStr = `
 local key = KEYS[1] --key
 local limit = tonumber(ARGV[1]) --限流大小
@@ -89,16 +92,21 @@ redis.call('ZREMRANGEBYRANK','prefix'..key,0,-1)
 
 	// SlideDelStr : del lua string from slide window
 	// Input:
-	//		key : redis key
+	//	key : redis key
 	SlideDelStr = `
 local key = KEYS[1] --key
 redis.call('HDEL',key,'limit','duration')
 redis.call('ZREMRANGEBYRANK','prefix'..key,0,-1)
 `
-
-	// SlideGetStr : slide window get lua string
-	// key : redis key
-	// current : current time (ms)
+	// SlideGetStr : slide window lua get script, this script maintains a sortedsort with a unix time score and
+	//	a hash table with serveral props
+	// Input:
+	// 	key : redis key
+	// 	current : current time (μs)
+	// Output:
+	//	0 : ok
+	//	-1 : request overflow
+	//	-2 : key not exist
 	SlideGetStr = `
 local key = KEYS[1] --key
 local current = tonumber(ARGV[1]) --current timestamp
@@ -131,7 +139,13 @@ for i=1,#idxs do
 end
 return retValue
 `
-
+	// BucketAddStr : bucket lua add script
+	// Input :
+	//	key : redis key
+	//	limit : request count limit between the time span
+	//	duration : time span
+	//	current : current time (μs)
+	//	max : capacity of the bucket
 	BucketAddStr = `
 local key = KEYS[1] --key
 local limit = tonumber(ARGV[1]) --限流大小
@@ -141,6 +155,14 @@ local max = tonumber(ARGV[4]) --current timestamp
 local span = duration/limit
 redis.call('HMSET',key,'limit',limit,'duration',duration,'span',span,'last',0,'max',max,'waitcnt',0)
 `
+	// BucketGetStr : bucket lua get script
+	// Input :
+	//	key : redis key
+	//	current : current time (μs)
+	// Output:
+	//	0 : ok
+	// -1 : overflow
+	// -2 : key not exist
 	BucketGetStr = `
 local key = KEYS[1] --key
 local current = tonumber(ARGV[1]) --current timestamp
@@ -154,8 +176,6 @@ local waitCnt = tonumber(limitInfos[4])
 if (span == nil or max == nil or last == nil or waitCnt == nil) then
     return -2
 end
-
-print(1,key,waitCnt,max)
 
 local retValue = 0
 if (waitCnt > max) then
@@ -175,15 +195,18 @@ local tmWait = span - (current - last) % span
 redis.call('HMSET',key,'last',current,'waitcnt',waitCnt)
 return tmWait
 `
-
+	// BucketCheckAddr : bucket lua check script
+	// Input :
+	//	key : redis key
+	// Output:
+	//	0 : ok
+	// -1 : overflow
 	BucketCheckAddr = `
 local key = KEYS[1] --key
 local limitInfos = redis.call('HMGET',key,'waitcnt','max')
 
 local waitCnt = tonumber(limitInfos[1])
 local max = tonumber(limitInfos[2])
-
-print(2,key,waitCnt,max)
 
 local  retValue = 0
 if (waitCnt >= max) then
@@ -196,11 +219,23 @@ end
 
 return retValue
 `
+	// BucketSetAddr : bucket lua set script
 	BucketSetAddr = BucketAddStr
+
+	// BucketDelAddr : bucket lua del script
+	// Input :
+	//	key : redis key
 	BucketDelAddr = `
 local key = KEYS[1] --key
 redis.call('HDEL',key,'limit','duration','span','last','max','waitcnt')
 `
+	// TokenAddStr : add lua string for token
+	// Input :
+	//	key : redis key
+	//	limit : request count limit between the time span
+	//	duration : time span
+	//	current : current time (μs)
+	// 	max : capacity of tokens
 	TokenAddStr = `
 local key = KEYS[1] --key
 local limit = tonumber(ARGV[1]) --限流大小
@@ -210,7 +245,14 @@ local max = tonumber(ARGV[4]) --current timestamp
 local rate = duration/limit
 redis.call('HMSET',key,'limit',limit,'duration',duration,'rate',rate,'calstart',current,'left',0,'max',max)	
 `
-
+	// TokenGetStr : lua get script for token
+	// Input :
+	//	key : redis key
+	//	current : current time (μs)
+	// Output:
+	//	0 : ok
+	// -1 : overflow
+	// -2 : key not exist
 	TokenGetStr = `
 local key = KEYS[1] --key
 local current = tonumber(ARGV[1]) --current timestamp
@@ -245,8 +287,12 @@ end
 redis.call('HMSET',key,'calstart',calStart,'left',left)
 return retValue
 `
-
+	// TokenSetStr : lua set str for token, see TokenAddStr
 	TokenSetStr = TokenAddStr
+
+	// TokenDelStr : del str for token
+	// Input:
+	//	key : redis key
 	TokenDelStr = `
 local key = KEYS[1] --key
 redis.call('HDEL',key,'limit','duration','rate','calstart','left','max')	
