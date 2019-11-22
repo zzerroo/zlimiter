@@ -17,7 +17,7 @@ const (
 	LimitRedisFixWindow   = common.LimitRedisFixWindow
 	LimitRedisSlideWindow = common.LimitRedisSlideWindow
 	LimitRedisBucket      = common.LimitRedisBucket
-	LimitRedisToken       = common.LimitMemToken
+	LimitRedisToken       = common.LimitRedisToken
 )
 
 // DriverI ...

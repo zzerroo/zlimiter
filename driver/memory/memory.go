@@ -30,13 +30,14 @@ type fixWindowItem struct {
 
 type slideWindowItem struct {
 	item
-	CurCnt int64
+	ReqList []time.Time
 }
 
 type tokenItem struct {
 	item
-	Max    int64
-	TkLeft int64
+	Max          int64
+	TkLeft       int64
+	CreateRateNs float64
 }
 
 type bucketItem struct {
@@ -79,24 +80,6 @@ func (c *CacheSlideWindow) Init(...interface{}) error {
 	return nil
 }
 
-// Init ...
-func (c *CacheFixWindow) Init(...interface{}) error {
-	c.items = make(map[string]fixWindowItem)
-	return nil
-}
-
-// Init ...
-func (b *Bucket) Init(...interface{}) error {
-	b.items = make(map[string]bucketItem)
-	return nil
-}
-
-// Init ...
-func (t *Token) Init(...interface{}) error {
-	t.items = make(map[string]tokenItem)
-	return nil
-}
-
 // Add ...
 func (c *CacheSlideWindow) Add(key string, limits int64, tmDuriation time.Duration, _ ...interface{}) error {
 	c.rwMut.Lock()
@@ -107,8 +90,8 @@ func (c *CacheSlideWindow) Add(key string, limits int64, tmDuriation time.Durati
 			Key:      key,
 			Limits:   limits,
 			Druation: tmDuriation,
-			StartAt:  time.Now()},
-		CurCnt: 0,
+		},
+		ReqList: make([]time.Time, 0),
 	}
 	c.items[key] = itemTmp
 	return nil
@@ -124,8 +107,8 @@ func (c *CacheSlideWindow) Set(key string, limits int64, tmDuriation time.Durati
 			Key:      key,
 			Limits:   limits,
 			Druation: tmDuriation,
-			StartAt:  time.Now()},
-		CurCnt: 0,
+		},
+		ReqList: make([]time.Time, 0),
 	}
 	c.items[key] = itemTmp
 	return nil
@@ -137,6 +120,46 @@ func (c *CacheSlideWindow) Del(key string) error {
 	defer c.rwMut.Unlock()
 
 	delete(c.items, key)
+	return nil
+}
+
+// Get ...
+func (c *CacheSlideWindow) Get(key string) (bool, int64, error) {
+	c.rwMut.Lock()
+	defer c.rwMut.Unlock()
+
+	var itemTmp slideWindowItem
+	var ok bool
+
+	if itemTmp, ok = c.items[key]; !ok {
+		return false, -1, errors.New(common.ErrorInputParam)
+	}
+
+	cur := time.Now()
+	var left int64
+	// 滑动窗口起点
+	start := cur.Add(-1 * itemTmp.Druation)
+
+	// 删除窗口以外的数据
+	for _, tm := range itemTmp.ReqList {
+		if tm.Before(start) {
+			itemTmp.ReqList = itemTmp.ReqList[1:]
+		}
+	}
+
+	if int64(len(itemTmp.ReqList)) >= itemTmp.Limits {
+		return true, -1, nil
+	}
+
+	itemTmp.ReqList = append(itemTmp.ReqList, cur)
+	left = itemTmp.Limits - int64(len(itemTmp.ReqList))
+	c.items[key] = itemTmp
+	return left < 0, left, nil
+}
+
+// Init ...
+func (c *CacheFixWindow) Init(...interface{}) error {
+	c.items = make(map[string]fixWindowItem)
 	return nil
 }
 
@@ -216,34 +239,10 @@ func (c *CacheFixWindow) Get(key string) (bool, int64, error) {
 	return left < 0, left, nil
 }
 
-// Get ...
-func (c *CacheSlideWindow) Get(key string) (bool, int64, error) {
-	c.rwMut.Lock()
-	defer c.rwMut.Unlock()
-
-	var itemTmp slideWindowItem
-	var ok bool
-
-	if itemTmp, ok = c.items[key]; !ok {
-		return false, -1, errors.New(common.ErrorInputParam)
-	}
-
-	curTm := time.Now()
-	startAt := itemTmp.StartAt
-	duration := itemTmp.Druation
-
-	if startAt.Add(duration).Before(curTm) {
-		itemTmp.StartAt = curTm
-		itemTmp.CurCnt = 1
-
-		c.items[key] = itemTmp
-		return false, itemTmp.Limits - itemTmp.CurCnt, nil
-	}
-
-	left := itemTmp.Limits - itemTmp.CurCnt - 1
-	itemTmp.CurCnt = itemTmp.CurCnt + 1
-	c.items[key] = itemTmp
-	return left < 0, left, nil
+// Init ...
+func (t *Token) Init(...interface{}) error {
+	t.items = make(map[string]tokenItem)
+	return nil
 }
 
 // Add ...
@@ -264,6 +263,7 @@ func (t *Token) Add(key string, limits int64, tmDuriation time.Duration, others 
 		return errors.New(common.ErrorInputParam)
 	}
 
+	createRateNs := (float64(limits) / float64(tmDuriation.Nanoseconds()))
 	itemTmp := tokenItem{
 		item: item{
 			Key:      key,
@@ -271,8 +271,9 @@ func (t *Token) Add(key string, limits int64, tmDuriation time.Duration, others 
 			Druation: tmDuriation,
 			StartAt:  time.Now(),
 		},
-		Max:    max,
-		TkLeft: 0,
+		Max:          max,
+		TkLeft:       0,
+		CreateRateNs: createRateNs,
 	}
 	t.items[key] = itemTmp
 
@@ -303,6 +304,7 @@ func (t *Token) Set(key string, limits int64, tmDuriation time.Duration, others 
 		}
 	}
 
+	createRateNs := (float64(limits) / float64(tmDuriation.Nanoseconds()))
 	itemTmp := tokenItem{
 		item: item{
 			Key:      key,
@@ -310,8 +312,9 @@ func (t *Token) Set(key string, limits int64, tmDuriation time.Duration, others 
 			Druation: tmDuriation,
 			StartAt:  time.Now(),
 		},
-		Max:    max,
-		TkLeft: 0,
+		Max:          max,
+		TkLeft:       0,
+		CreateRateNs: createRateNs,
 	}
 	t.items[key] = itemTmp
 	return nil
@@ -328,12 +331,9 @@ func (t *Token) Get(key string) (bool, int64, error) {
 		return false, -1, errors.New(common.ErrorInputParam)
 	}
 
-	// Rate to Create
-	createRateNs := (float64(itemTmp.Limits) / float64(itemTmp.Druation.Nanoseconds()))
-
 	// Cal coumt of token created between StartAt and now
 	curTm := time.Now()
-	tkCreated := float64((curTm.Sub(itemTmp.StartAt)).Nanoseconds()) * createRateNs
+	tkCreated := float64((curTm.Sub(itemTmp.StartAt)).Nanoseconds()) * itemTmp.CreateRateNs
 	tkCur := int64(math.Min(tkCreated+float64(itemTmp.TkLeft), float64(itemTmp.Max)))
 	if tkCur > 0 {
 		itemTmp.TkLeft = int64(tkCur) - 1
@@ -343,6 +343,12 @@ func (t *Token) Get(key string) (bool, int64, error) {
 		return false, itemTmp.TkLeft, nil
 	}
 	return true, -1, nil
+}
+
+// Init ...
+func (b *Bucket) Init(...interface{}) error {
+	b.items = make(map[string]bucketItem)
+	return nil
 }
 
 // Add ...

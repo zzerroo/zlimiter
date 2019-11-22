@@ -2,7 +2,6 @@ package redis
 
 import (
 	"errors"
-	"fmt"
 	"log"
 	"time"
 
@@ -206,6 +205,12 @@ func (r *RedisProxy) Get(key string) (bool, int64, error) {
 	}
 
 	if left, ok := rsp.(int64); ok {
+		if left == -2 {
+			return false, -1, errors.New(common.ErrorItemNotExist)
+		} else if left == -1 {
+			return true, 0, nil
+		}
+
 		return left < 0, left, nil
 	}
 
@@ -236,47 +241,6 @@ func (r *RedisProxy) Del(key string) error {
 	return r.Scripts[common.RedisDelScript].SendHash(conn, key)
 }
 
-// Add ...
-func (r *RedisFixWindow) Add(key string, limit int64, tmDuration time.Duration, others ...interface{}) error {
-	conn := r.RedisClient.Get()
-	defer conn.Close()
-
-	return r.Scripts[common.RedisAddScript].SendHash(conn, key, limit, tmDuration.Nanoseconds()/1e3, time.Now().UnixNano()/1e3)
-}
-
-// Get ...
-func (r *RedisFixWindow) Get(key string) (bool, int64, error) {
-	conn := r.RedisClient.Get()
-	defer conn.Close()
-
-	rsp, erro := r.Scripts[common.RedisGetScript].Do(conn, key, time.Now().UnixNano()/1e3)
-	if erro != nil {
-		return false, -1, erro
-	}
-
-	if left, ok := rsp.(int64); ok {
-		return left < 0, left, nil
-	}
-
-	return false, 0, errors.New(common.ErrorUnknown)
-}
-
-// Set ...
-func (r *RedisFixWindow) Set(key string, limit int64, tmDuration time.Duration, others ...interface{}) error {
-	conn := r.RedisClient.Get()
-	defer conn.Close()
-
-	return r.Scripts[common.RedisSetScript].SendHash(conn, key, limit, tmDuration.Nanoseconds()/1e3, time.Now().UnixNano()/1e3)
-}
-
-// Del ...
-func (r *RedisFixWindow) Del(key string) error {
-	conn := r.RedisClient.Get()
-	defer conn.Close()
-
-	return r.Scripts[common.RedisDelScript].SendHash(conn, key)
-}
-
 // Get ...
 func (r *RedisBucket) Get(key string) (bool, int64, error) {
 	conn := r.RedisClient.Get()
@@ -288,8 +252,9 @@ func (r *RedisBucket) Get(key string) (bool, int64, error) {
 	}
 	if chckStatus, ok := rsp.(int64); ok {
 		if chckStatus == -1 {
-			fmt.Printf("error overflow\n")
 			return false, -1, errors.New(common.ErrorReqOverFlow)
+		} else if chckStatus == -2 {
+			return false, -1, errors.New(common.ErrorItemNotExist)
 		}
 	}
 

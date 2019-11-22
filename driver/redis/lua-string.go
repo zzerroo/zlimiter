@@ -13,7 +13,7 @@ local key = KEYS[1] --key
 local limit = tonumber(ARGV[1]) --限流大小
 local duration = tonumber(ARGV[2]) --时长
 local current = tonumber(ARGV[3]) --current timestamp
-redis.call('HMSET',key,'limit',limit,'duration',duration,'idx',0,'start',current,'wdwcnt',0)
+redis.call('HMSET','2d1b74349305508b-fix'..key,'limit',limit,'duration',duration,'idx',0,'start',current,'wdwcnt',0)
 `
 	// FixGetStr : fix window lua get script, this script check the request cnt within the index window
 	// Input:
@@ -26,7 +26,7 @@ redis.call('HMSET',key,'limit',limit,'duration',duration,'idx',0,'start',current
 	FixGetStr = `
 local key = KEYS[1] --key
 local current = tonumber(ARGV[1]) --current timestamp
-local limitInfos = redis.call('HMGET',key,'limit','duration','start','idx','wdwcnt')
+local limitInfos = redis.call('HMGET','2d1b74349305508b-fix'..key,'limit','duration','start','idx','wdwcnt')
 	
 local limit = tonumber(limitInfos[1])
 local duration = tonumber(limitInfos[2])
@@ -53,7 +53,7 @@ else
 	end
 end
 		
-redis.call('HMSET',key,'limit',limit,'duration',duration,'idx',curlIdx,'wdwcnt',curWdwCnt)
+redis.call('HMSET','2d1b74349305508b-fix'..key,'limit',limit,'duration',duration,'idx',curlIdx,'wdwcnt',curWdwCnt)
 return retValue
 `
 
@@ -65,7 +65,7 @@ return retValue
 	// 		key : the redis key
 	FixDelStr = `
 local key = KEYS[1] --key
-redis.call('HDEL',key,'limit','duration','idx','start','wdwcnt')
+redis.call('HDEL','2d1b74349305508b-fix'..key,'limit','duration','idx','start','wdwcnt')
 `
 	// SlideAddStr : slide window lua add script
 	// Input:
@@ -78,7 +78,8 @@ local key = KEYS[1] --key
 local limit = tonumber(ARGV[1]) --限流大小
 local duration = tonumber(ARGV[2]) --时长
 local current = tonumber(ARGV[3]) --current timestamp
-redis.call('HMSET',key,'limit',limit,'duration',duration)
+redis.call('HMSET','2d1b74349305508b-slide-h'..key,'limit',limit,'duration',duration,'idx',0)
+redis.call('ZREMRANGEBYRANK','2d1b74349305508b-slide-z'..key,0,-1)
 `
 	// SlideSetStr : slide window lua set string, see SlideAddStr
 	SlideSetStr = `
@@ -86,8 +87,8 @@ local key = KEYS[1] --key
 local limit = tonumber(ARGV[1]) --限流大小
 local duration = tonumber(ARGV[2]) --时长
 local current = tonumber(ARGV[3]) --current timestamp
-redis.call('HMSET',key,'limit',limit,'duration',duration)
-redis.call('ZREMRANGEBYRANK','prefix'..key,0,-1)
+redis.call('HMSET','2d1b74349305508b-slide-h'..key,'limit',limit,'duration',duration)
+redis.call('ZREMRANGEBYRANK','2d1b74349305508b-slide-z'..key,0,-1)
 `
 
 	// SlideDelStr : del lua string from slide window
@@ -95,8 +96,8 @@ redis.call('ZREMRANGEBYRANK','prefix'..key,0,-1)
 	//	key : redis key
 	SlideDelStr = `
 local key = KEYS[1] --key
-redis.call('HDEL',key,'limit','duration')
-redis.call('ZREMRANGEBYRANK','prefix'..key,0,-1)
+redis.call('HDEL','2d1b74349305508b-slide-h'..key,'limit','duration','idx')
+redis.call('ZREMRANGEBYRANK','2d1b74349305508b-slide-z'..key,0,-1)
 `
 	// SlideGetStr : slide window lua get script, this script maintains a sortedsort with a unix time score and
 	//	a hash table with serveral props
@@ -110,32 +111,33 @@ redis.call('ZREMRANGEBYRANK','prefix'..key,0,-1)
 	SlideGetStr = `
 local key = KEYS[1] --key
 local current = tonumber(ARGV[1]) --current timestamp
-local limitInfos = redis.call('HMGET',key,'limit','duration')
-	
+local limitInfos = redis.call('HMGET','2d1b74349305508b-slide-h'..key,'limit','duration','idx')
+		
 local limit = tonumber(limitInfos[1])
 local duration = tonumber(limitInfos[2])
-if (limit == nil or duration == nil ) then
-    return -2
+local curIdx = tonumber(limitInfos[3])
+if (limit == nil or duration == nil or curIdx == nil) then
+	return -2
 end
-	
+
+redis.call('HSET','2d1b74349305508b-slide-h'..key,'idx',curIdx + 1)
+
 local start = current - duration
-local cnt = redis.call('ZCOUNT','prefix'..key, start, current)
-	
+local cnt = redis.call('ZCOUNT','2d1b74349305508b-slide-z'..key, start, current)
+local idxs = redis.call('ZRANGEBYSCORE','2d1b74349305508b-slide-z'..key, start,current)
+
 local retValue = 0
 if (cnt >= limit) then
 	retValue =  -1
 else
-	redis.call('ZADD','prefix'..key, current, ARGV[1])
+	redis.call('ZADD','2d1b74349305508b-slide-z'..key, current, curIdx)
 	retValue = limit - cnt - 1
 end
 
-print(current,duration,start,cnt)
-		
 -- delete old data
-local idxs = redis.call('ZRANGEBYSCORE','prefix'..key, 0,start)
+local idxs = redis.call('ZRANGEBYSCORE','2d1b74349305508b-slide-z'..key, 0,start)
 for i=1,#idxs do
-	print(idxs[i])
-	redis.call('ZREM','prefix'..key, idxs[i])
+ 	redis.call('ZREM','2d1b74349305508b-slide-z'..key, idxs[i])
 end
 return retValue
 `
@@ -153,7 +155,7 @@ local duration = tonumber(ARGV[2]) --时长
 local current = tonumber(ARGV[3]) --current timestamp
 local max = tonumber(ARGV[4]) --current timestamp
 local span = duration/limit
-redis.call('HMSET',key,'limit',limit,'duration',duration,'span',span,'last',0,'max',max,'waitcnt',0)
+redis.call('HMSET','2d1b74349305508b-bucket'..key,'limit',limit,'duration',duration,'span',span,'last',0,'max',max,'waitcnt',0)
 `
 	// BucketGetStr : bucket lua get script
 	// Input :
@@ -166,7 +168,7 @@ redis.call('HMSET',key,'limit',limit,'duration',duration,'span',span,'last',0,'m
 	BucketGetStr = `
 local key = KEYS[1] --key
 local current = tonumber(ARGV[1]) --current timestamp
-local limitInfos = redis.call('HMGET',key,'span','max','last','waitcnt')
+local limitInfos = redis.call('HMGET','2d1b74349305508b-bucket'..key,'span','max','last','waitcnt')
 	
 local span = tonumber(limitInfos[1])
 local max = tonumber(limitInfos[2])
@@ -180,19 +182,19 @@ end
 local retValue = 0
 if (waitCnt > max) then
 	waitCnt = waitCnt - 1
-	redis.call('HMSET',key,'last',current,'waitcnt',waitCnt)
+	redis.call('HMSET','2d1b74349305508b-bucket'..key,'last',current,'waitcnt',waitCnt)
 	return -1	
 end
 
 if (last == 0) then
 	waitCnt = waitCnt - 1	
-	redis.call('HMSET',key,'last',current,'waitcnt',waitCnt)
+	redis.call('HMSET','2d1b74349305508b-bucket'..key,'last',current,'waitcnt',waitCnt)
 	return 0
 end
 
 waitCnt = waitCnt - 1
 local tmWait = span - (current - last) % span
-redis.call('HMSET',key,'last',current,'waitcnt',waitCnt)
+redis.call('HMSET','2d1b74349305508b-bucket'..key,'last',current,'waitcnt',waitCnt)
 return tmWait
 `
 	// BucketCheckAddr : bucket lua check script
@@ -201,12 +203,17 @@ return tmWait
 	// Output:
 	//	0 : ok
 	// -1 : overflow
+	// -2 : key not exist
 	BucketCheckAddr = `
 local key = KEYS[1] --key
-local limitInfos = redis.call('HMGET',key,'waitcnt','max')
+local limitInfos = redis.call('HMGET','2d1b74349305508b-bucket'..key,'waitcnt','max')
 
 local waitCnt = tonumber(limitInfos[1])
 local max = tonumber(limitInfos[2])
+
+if (waitCnt == nil or max == nil) then	
+	return -2
+end
 
 local  retValue = 0
 if (waitCnt >= max) then
@@ -214,7 +221,7 @@ if (waitCnt >= max) then
 else 
 	retValue = 0
 	waitCnt = waitCnt + 1
-	redis.call('HSET',key,'waitcnt',waitCnt)
+	redis.call('HSET','2d1b74349305508b-bucket'..key,'waitcnt',waitCnt)
 end
 
 return retValue
@@ -227,7 +234,7 @@ return retValue
 	//	key : redis key
 	BucketDelAddr = `
 local key = KEYS[1] --key
-redis.call('HDEL',key,'limit','duration','span','last','max','waitcnt')
+redis.call('HDEL','2d1b74349305508b-bucket'..key,'limit','duration','span','last','max','waitcnt')
 `
 	// TokenAddStr : add lua string for token
 	// Input :
@@ -243,7 +250,7 @@ local duration = tonumber(ARGV[2]) --时长
 local current = tonumber(ARGV[3]) --current timestamp
 local max = tonumber(ARGV[4]) --current timestamp
 local rate = duration/limit
-redis.call('HMSET',key,'limit',limit,'duration',duration,'rate',rate,'calstart',current,'left',0,'max',max)	
+redis.call('HMSET','2d1b74349305508b-token'..key,'limit',limit,'duration',duration,'rate',rate,'calstart',current,'left',0,'max',max)	
 `
 	// TokenGetStr : lua get script for token
 	// Input :
@@ -256,7 +263,7 @@ redis.call('HMSET',key,'limit',limit,'duration',duration,'rate',rate,'calstart',
 	TokenGetStr = `
 local key = KEYS[1] --key
 local current = tonumber(ARGV[1]) --current timestamp
-local limitInfos = redis.call('HMGET',key,'calstart','rate','left','max')
+local limitInfos = redis.call('HMGET','2d1b74349305508b-token'..key,'calstart','rate','left','max')
 	
 local calStart = tonumber(limitInfos[1])
 local rate = tonumber(limitInfos[2])
@@ -284,7 +291,7 @@ else
 	retValue = -1
 end
 	
-redis.call('HMSET',key,'calstart',calStart,'left',left)
+redis.call('HMSET','2d1b74349305508b-token'..key,'calstart',calStart,'left',left)
 return retValue
 `
 	// TokenSetStr : lua set str for token, see TokenAddStr
@@ -295,6 +302,6 @@ return retValue
 	//	key : redis key
 	TokenDelStr = `
 local key = KEYS[1] --key
-redis.call('HDEL',key,'limit','duration','rate','calstart','left','max')	
+redis.call('HDEL','2d1b74349305508b-token'..key,'limit','duration','rate','calstart','left','max')	
 `
 )

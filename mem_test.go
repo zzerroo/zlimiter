@@ -14,7 +14,7 @@ func TestMem(t *testing.T) {
 	for _, wdwType := range windowTypes {
 		memLimit, erro := zlimiter.NewLimiter(int64(wdwType))
 		if erro != nil {
-			t.Errorf("error:%s", erro.Error())
+			t.Error(erro)
 		}
 
 		// test add
@@ -24,17 +24,14 @@ func TestMem(t *testing.T) {
 
 		erro = memLimit.Add(key, 4, 1*time.Second)
 		if erro != nil {
-			t.Errorf("error:%s", erro.Error())
+			t.Error(erro)
 		}
 
 		// test get
 		reached, left, erro = memLimit.Get(key)
-		if erro != nil {
-			t.Errorf("error:%s", erro.Error())
-		}
 
-		if reached == true || left != 3 {
-			t.Errorf("error:result should be false and left should be 2")
+		if reached == true || left != 3 || erro != nil {
+			t.Errorf("%v %v %v should be false 2 nil", reached, left, erro)
 		}
 
 		// test get and limit
@@ -45,81 +42,78 @@ func TestMem(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				reach, _, erro := memLimit.Get(key)
-				if erro == nil && reach == false {
+				reached, _, erro := memLimit.Get(key)
+				if erro == nil && reached == false {
 					sCnt++
 				} else {
 					fCnt++
-					if erro != nil {
-						t.Logf("error:%s", erro.Error())
-					}
 				}
 			}()
 		}
 
 		wg.Wait()
 		if sCnt != 3 {
-			t.Errorf("sCnt %d", sCnt)
+			t.Errorf("%v,should be 3", sCnt)
 		}
 
 		// test set
 		erro = memLimit.Set(key, 100, 1*time.Second)
 		if erro != nil {
-			t.Errorf("error %s", erro.Error())
+			t.Error(erro.Error())
 		}
 
-		reach, left, erro := memLimit.Get(key)
-		if erro != nil || reach != false || left != 99 {
-			t.Errorf("reach %v,left %d, error %v", reach, left, erro)
+		reached, left, erro = memLimit.Get(key)
+		if erro != nil || reached != false || left != 99 {
+			t.Errorf("%v,%v,%v should be false,99,nil", reached, left, erro)
 		}
 
 		// test timeout
 		erro = memLimit.Set(key, 4, 4*time.Second)
 		if erro != nil {
-			t.Errorf("error %s", erro.Error())
+			t.Error(erro.Error())
 		}
 
-		reach, left, erro = memLimit.Get(key)
-		if erro != nil || reach != false || left != 3 {
-			t.Errorf("reach %v,left %d, error %v", reach, left, erro)
+		reached, left, erro = memLimit.Get(key)
+		if erro != nil || reached != false || left != 3 {
+			t.Errorf("%v %v %v,should be false,3,nil", reached, left, erro)
 		}
 
 		time.Sleep(4 * time.Second)
 
-		reach, left, erro = memLimit.Get(key)
-		if erro != nil || reach != false || left != 3 {
-			t.Errorf("reach %v,left %d, error %v", reach, left, erro)
+		reached, left, erro = memLimit.Get(key)
+		if erro != nil || reached != false || left != 3 {
+			t.Errorf("%v %v %v,should be false,3,nil", reached, left, erro)
 		}
 
 		// test window
-		erro = memLimit.Set(key, 4, 5*time.Second)
+		erro = memLimit.Set(key, 4, 4*time.Second)
 		if erro != nil {
-			t.Errorf("error %s", erro.Error())
+			t.Error(erro.Error())
 		}
 
-		time.Sleep(13 * time.Second)
-
-		reach, left, erro = memLimit.Get(key)
-		if erro != nil || reach == true || left != 3 {
-			t.Errorf("reach %v,left %d, error %v", reach, left, erro)
+		reached, left, erro = memLimit.Get(key)
+		if erro != nil || reached == true || left != 3 {
+			t.Errorf("%v %v %v,should be false,3,nil", reached, left, erro)
 		}
 
-		reach, left, erro = memLimit.Get(key)
-		if erro != nil || reach == true || left != 2 {
-			t.Errorf("reach %v,left %d, error %v", reach, left, erro)
+		time.Sleep(1 * time.Second)
+
+		reached, left, erro = memLimit.Get(key)
+		if erro != nil || reached == true || left != 2 {
+			t.Errorf("%v %v %v,should be false,2,nil", reached, left, erro)
 		}
 
 		time.Sleep(3 * time.Second)
 
 		if wdwType == zlimiter.LimitMemFixWindow {
-			reach, left, erro = memLimit.Get(key)
-			if erro != nil || reach == true || left != 3 {
-				t.Errorf("reach %v,left %d, error %v", reach, left, erro)
+			reached, left, erro = memLimit.Get(key)
+			if erro != nil || reached == true || left != 3 {
+				t.Errorf("%v %v %v,should be false,3,nil", reached, left, erro)
 			}
 		} else if wdwType == zlimiter.LimitMemSlideWindow {
-			reach, left, erro = memLimit.Get(key)
-			if erro != nil || reach == true || left != 1 {
-				t.Errorf("reach %v,left %d, error %v", reach, left, erro)
+			reached, left, erro = memLimit.Get(key)
+			if erro != nil || reached == true || left != 2 {
+				t.Errorf("%v %v %v,should be false,1,nil", reached, left, erro)
 			}
 		}
 
@@ -127,10 +121,8 @@ func TestMem(t *testing.T) {
 		memLimit.Del(key)
 		_, _, erro = memLimit.Get(key)
 		if erro == nil {
-			t.Error("should not find the key")
+			t.Error("item should be not exist")
 		}
-
-		t.Logf("reach %v,left %d", reach, left)
 	}
 }
 
@@ -152,19 +144,19 @@ func TestToken(t *testing.T) {
 
 	time.Sleep(1 * time.Second)
 
-	// reached,left == false,0
+	// test get
 	reached, left, erro = memLimit.Get(key)
 	if erro != nil {
 		t.Errorf("error:%s", erro.Error())
 	}
-	if reached == true || left != 0 {
-		t.Errorf("errors:reach should be false and left should be 0")
+	if reached == true || left != 0 || erro != nil {
+		t.Errorf("%v %v %v,should be false,0,nil", reached, left, erro)
 	}
 
-	// reached,left == true,-1
+	//
 	reached, left, erro = memLimit.Get(key)
-	if erro != nil || reached == false {
-		t.Errorf("errors:reach should be false and left should be 0")
+	if erro != nil || reached == false || left != -1 {
+		t.Errorf("%v %v %v,should be false,-1,nil", reached, left, erro)
 	}
 
 	// create 4 token
@@ -196,7 +188,6 @@ func TestToken(t *testing.T) {
 	if sCnt != 4 {
 		t.Errorf("sCnt %d", sCnt)
 	}
-	t.Logf("should 4, sCnt:%v", sCnt)
 
 	// test set
 	erro = memLimit.Set(key, 4, 2*time.Second, max)
@@ -206,13 +197,10 @@ func TestToken(t *testing.T) {
 
 	time.Sleep(4 * time.Second)
 
-	// reached,left == false,7
+	//
 	reached, left, erro = memLimit.Get(key)
-	if reached != false || left != 7 {
-		t.Errorf("reach %v,left %d", reached, left)
-		if erro != nil {
-			t.Errorf("%v", erro.Error())
-		}
+	if reached != false || left != 7 || erro != nil {
+		t.Errorf("%v %v %v,should be false,7,nil", reached, left, erro)
 	}
 
 	// test overflow
@@ -225,39 +213,29 @@ func TestToken(t *testing.T) {
 
 	// reached,left == false 0
 	reached, left, erro = memLimit.Get(key)
-	if reached != false || left != 0 {
-		t.Errorf("reach %v,left %d", reached, left)
-		if erro != nil {
-			t.Errorf("%v", erro.Error())
-		}
+	if reached != false || left != 0 || erro != nil {
+		t.Errorf("%v %v %v,should be false,0,nil", reached, left, erro)
 	}
 
 	time.Sleep(25 * time.Second)
 
 	// reached,left == false 19
 	reached, left, erro = memLimit.Get(key)
-	if reached != false || left != 19 {
-		t.Errorf("reach %v,left %d", reached, left)
-		if erro != nil {
-			t.Errorf("%v", erro.Error())
-		}
+	if reached != false || left != 19 || erro != nil {
+		t.Errorf("%v %v %v,should be false,19,nil", reached, left, erro)
 	}
-	t.Logf("should false,19 reached:%v,left:%v", reached, left)
 
 	// reached,left == false 18
 	reached, left, erro = memLimit.Get(key)
-	if reached != false || left != 18 {
-		t.Errorf("reach %v,left %d", reached, left)
-		if erro != nil {
-			t.Errorf("%v", erro.Error())
-		}
+	if reached != false || left != 18 || erro != nil {
+		t.Errorf("%v %v %v,should be false,18,nil", reached, left, erro)
 	}
 
 	// test del
 	memLimit.Del(key)
 	_, _, erro = memLimit.Get(key)
 	if erro == nil {
-		t.Error("should not find the key")
+		t.Error("item should not be exist")
 	}
 }
 
@@ -278,22 +256,17 @@ func TestBucket(t *testing.T) {
 		t.Errorf("error:%s", erro.Error())
 	}
 
-	// reached，left == false,-1
+	// test get and time span
 	tm1 := time.Now()
 	reached, left, erro = memLimit.Get(key)
-	if erro != nil {
-		t.Errorf("error:%s", erro.Error())
-	}
-	t.Logf("should false,-1 reached:%v,left:%v", reached, left)
-
-	if reached == true || left != -1 {
-		t.Errorf("errors:reach should be false and left should be 0")
+	if erro != nil || left != -1 || reached != false {
+		t.Errorf("%v %v %v,should be false,-1,nil", reached, left, erro)
 	}
 
-	// reached,left == true,0
+	//
 	reached, left, erro = memLimit.Get(key)
 	if erro != nil || reached != false || left != -1 {
-		t.Errorf("errors:reach should be false and left should be 0")
+		t.Errorf("%v %v %v,should be false,-1,nil", reached, left, erro)
 	}
 	tm2 := time.Now()
 
@@ -314,9 +287,6 @@ func TestBucket(t *testing.T) {
 				sCnt++
 			} else {
 				fCnt++
-				if erro != nil {
-					t.Logf("error:%s", erro.Error())
-				}
 			}
 		}()
 	}
@@ -325,7 +295,6 @@ func TestBucket(t *testing.T) {
 	if sCnt != 14 {
 		t.Errorf("sCnt %d", sCnt)
 	}
-	t.Logf("should 14, sCnt:%v", sCnt)
 
 	// test set
 	erro = memLimit.Set(key, 4, 8*time.Second, max)
@@ -333,23 +302,17 @@ func TestBucket(t *testing.T) {
 		t.Errorf("error %s", erro.Error())
 	}
 
-	// reached,left == false,-1
+	//
 	tm1 = time.Now()
 	reached, left, erro = memLimit.Get(key)
-	if reached != false || left != -1 {
-		t.Errorf("reach %v,left %d", reached, left)
-		if erro != nil {
-			t.Errorf("%v", erro.Error())
-		}
+	if reached != false || left != -1 || erro != nil {
+		t.Errorf("%v %v %v,should be false,-1,nil", reached, left, erro)
 	}
 
-	// reached,left == false,-1
+	//
 	reached, left, erro = memLimit.Get(key)
-	if reached != false || left != -1 {
-		t.Errorf("reach %v,left %d", reached, left)
-		if erro != nil {
-			t.Errorf("%v", erro.Error())
-		}
+	if reached != false || left != -1 || erro != nil {
+		t.Errorf("%v %v %v,should be false,-1,nil", reached, left, erro)
 	}
 	tm2 = time.Now()
 
@@ -358,35 +321,7 @@ func TestBucket(t *testing.T) {
 		t.Errorf("errors:tm duration should be 2 sec")
 	}
 
-	// test overflow
-	max = 5
-	erro = memLimit.Set(key, 4, 2*time.Second, max)
-	if erro != nil {
-		t.Errorf("error %s", erro.Error())
-	}
-
-	sCnt = 0
-	fCnt = 0
-	dataLen := 15
-	for i := 0; i < dataLen; i++ {
-		wg.Add(1)
-		i := i
-		go func(idx int) {
-			defer wg.Done()
-			reached, left, erro = memLimit.Get(key)
-			if erro != nil {
-				fCnt++
-			} else {
-				sCnt++
-			}
-		}(i)
-	}
-
-	wg.Wait()
-	if fCnt != int64(dataLen)-max-1 { // ????
-		t.Error("error: failed cnt should be 5")
-	}
-
+	// test sleep and time span
 	erro = memLimit.Set(key, 4, 8*time.Second, max)
 	if erro != nil {
 		t.Errorf("error %s", erro.Error())
@@ -395,22 +330,16 @@ func TestBucket(t *testing.T) {
 	//reached,left == false 0
 	tm1 = time.Now()
 	reached, left, erro = memLimit.Get(key)
-	if reached != false || left != -1 {
-		t.Errorf("reach %v,left %d", reached, left)
-		if erro != nil {
-			t.Errorf("%v", erro.Error())
-		}
+	if reached != false || left != -1 || erro != nil {
+		t.Errorf("%v %v %v,should be false,-1,nil", reached, left, erro)
 	}
 
 	time.Sleep(1500 * time.Millisecond)
 
-	// reached,left == false,0
+	//
 	reached, left, erro = memLimit.Get(key)
-	if reached != false || left != -1 {
-		t.Errorf("reach %v,left %d", reached, left)
-		if erro != nil {
-			t.Errorf("%v", erro.Error())
-		}
+	if reached != false || left != -1 || erro != nil {
+		t.Errorf("%v %v %v,should be false,-1,nil", reached, left, erro)
 	}
 
 	tm2 = time.Now()
@@ -426,6 +355,4 @@ func TestBucket(t *testing.T) {
 	if erro == nil {
 		t.Error("should not find the key")
 	}
-
-	t.Logf("reach %v,left %d", reached, left)
 }

@@ -26,16 +26,16 @@ func TestRedisFixWindow(t *testing.T) {
 	}
 
 	// Test Get
-	bReached, left, erro := redisLimit.Get(key)
-	if bReached != false || left != 9 || erro != nil {
-		t.Error(bReached, left, erro)
+	reached, left, erro := redisLimit.Get(key)
+	if reached != false || left != 9 || erro != nil {
+		t.Errorf("%v %v %v,should be false,9,nil", reached, left, erro)
 	}
 
 	// Test timeout
 	time.Sleep(3 * time.Second)
-	bReached, left, erro = redisLimit.Get(key)
-	if bReached != false || left != 9 || erro != nil {
-		t.Error(bReached, left, erro)
+	reached, left, erro = redisLimit.Get(key)
+	if reached != false || left != 9 || erro != nil {
+		t.Errorf("%v %v %v,should be false,9,nil", reached, left, erro)
 	}
 
 	// Test Set
@@ -44,9 +44,9 @@ func TestRedisFixWindow(t *testing.T) {
 		t.Error(erro.Error())
 	}
 
-	bReached, left, erro = redisLimit.Get(key)
-	if bReached != false || left != 14 || erro != nil {
-		t.Error(bReached, left, erro)
+	reached, left, erro = redisLimit.Get(key)
+	if reached != false || left != 14 || erro != nil {
+		t.Errorf("%v %v %v,should be false,14,nil", reached, left, erro)
 	}
 
 	// Test Sync Get
@@ -70,15 +70,22 @@ func TestRedisFixWindow(t *testing.T) {
 		t.Error(failCnt)
 	}
 
+	key = "test1"
+	reached, left, erro = redisLimit.Get(key)
+	if reached != false || left != -1 || erro == nil {
+		t.Errorf("%v,%v,%v,should false,-1,not nil", reached, left, erro)
+	}
+	key = "test"
+
 	// Test Del
 	erro = redisLimit.Del(key)
 	if erro != nil {
 		t.Error(erro.Error())
 	}
 
-	bReached, left, erro = redisLimit.Get(key)
-	if bReached != true || left != -2 || erro != nil {
-		t.Error(bReached, left, erro)
+	reached, left, erro = redisLimit.Get(key)
+	if erro == nil {
+		t.Error("item should not exist")
 	}
 }
 
@@ -97,16 +104,16 @@ func TestRedisSlideWindow(t *testing.T) {
 	}
 
 	// Test Get
-	bReached, left, erro := redisLimit.Get(key)
-	if bReached != false || left != 9 || erro != nil {
-		t.Error(bReached, left, erro)
+	reached, left, erro := redisLimit.Get(key)
+	if reached != false || left != 9 || erro != nil {
+		t.Errorf("%v %v %v,should be false 9 nil", reached, left, erro)
 	}
 
 	// Test timeout
 	time.Sleep(3 * time.Second)
-	bReached, left, erro = redisLimit.Get(key)
-	if bReached != false || left != 9 || erro != nil {
-		t.Error(bReached, left, erro)
+	reached, left, erro = redisLimit.Get(key)
+	if reached != false || left != 9 || erro != nil {
+		t.Errorf("%v %v %v,should be false 9 nil", reached, left, erro)
 	}
 
 	// Test Set
@@ -115,9 +122,9 @@ func TestRedisSlideWindow(t *testing.T) {
 		t.Error(erro.Error())
 	}
 
-	bReached, left, erro = redisLimit.Get(key)
-	if bReached != false || left != 14 || erro != nil {
-		t.Error(bReached, left, erro)
+	reached, left, erro = redisLimit.Get(key)
+	if reached != false || left != 14 || erro != nil {
+		t.Errorf("%v %v %v,should be false 14 nil", reached, left, erro)
 	}
 
 	// Test Sync Get
@@ -125,21 +132,28 @@ func TestRedisSlideWindow(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := 0; i < 18; i++ {
 		wg.Add(1)
-		go func(idx int) {
+		go func() {
 			defer wg.Done()
-			bReached, left, erro := redisLimit.Get(key)
-			if bReached != false || left < 0 || erro != nil {
+			reached, left, erro := redisLimit.Get(key)
+			if reached != false || left < 0 || erro != nil {
 				failCnt++
 			} else {
 				successCnt++
 			}
-		}(i)
+		}()
 	}
 
 	wg.Wait()
 	if failCnt != 4 {
-		t.Error(failCnt)
+		t.Errorf("%v should be 4", failCnt)
 	}
+
+	key = "test1"
+	reached, left, erro = redisLimit.Get(key)
+	if reached != false || left != -1 || erro == nil {
+		t.Errorf("%v,%v,%v,should false,-1,not nil", reached, left, erro)
+	}
+	key = "test"
 
 	// test overflow
 	erro = redisLimit.Set(key, 15, 4*time.Second)
@@ -148,27 +162,27 @@ func TestRedisSlideWindow(t *testing.T) {
 	}
 
 	time.Sleep(1 * time.Second)
-	bReached, left, erro = redisLimit.Get(key)
-	if bReached != false || left != 14 || erro != nil {
-		t.Error(bReached, left, erro)
+	reached, left, erro = redisLimit.Get(key)
+	if reached != false || left != 14 || erro != nil {
+		t.Errorf("%v %v %v,should be false 14 nil", reached, left, erro)
 	}
 
 	time.Sleep(1 * time.Second)
-	bReached, left, erro = redisLimit.Get(key)
-	if bReached != false || left != 13 || erro != nil {
-		t.Error(bReached, left, erro)
+	reached, left, erro = redisLimit.Get(key)
+	if reached != false || left != 13 || erro != nil {
+		t.Errorf("%v %v %v,should be false 13 nil", reached, left, erro)
 	}
 
 	time.Sleep(1 * time.Second)
-	bReached, left, erro = redisLimit.Get(key)
-	if bReached != false || left != 12 || erro != nil {
-		t.Error(bReached, left, erro)
+	reached, left, erro = redisLimit.Get(key)
+	if reached != false || left != 12 || erro != nil {
+		t.Errorf("%v %v %v,should be false 12 nil", reached, left, erro)
 	}
 
 	time.Sleep(2 * time.Second)
-	bReached, left, erro = redisLimit.Get(key)
-	if bReached != false || left != 12 || erro != nil {
-		t.Error(bReached, left, erro)
+	reached, left, erro = redisLimit.Get(key)
+	if reached != false || left != 12 || erro != nil {
+		t.Errorf("%v %v %v,should be false 12 nil", reached, left, erro)
 	}
 
 	// Test Del
@@ -177,9 +191,9 @@ func TestRedisSlideWindow(t *testing.T) {
 		t.Error(erro.Error())
 	}
 
-	bReached, left, erro = redisLimit.Get(key)
-	if bReached != true || left != -2 || erro != nil {
-		t.Error(bReached, left, erro)
+	reached, left, erro = redisLimit.Get(key)
+	if erro == nil {
+		t.Errorf("%v,item should be not exist", erro)
 	}
 }
 
@@ -207,8 +221,6 @@ func TestRedisToken(t *testing.T) {
 	if reached == true || left != 0 || erro != nil {
 		t.Errorf("%v,%v,%v,should be false, 0, nil", reached, left, erro)
 	}
-	
-
 	// reached,left == true,-1
 	reached, left, erro = redisLimit.Get(key)
 	if erro != nil || reached == false {
@@ -231,9 +243,6 @@ func TestRedisToken(t *testing.T) {
 				sCnt++
 			} else {
 				fCnt++
-				if erro != nil {
-					t.Logf("error:%s", erro.Error())
-				}
 			}
 		}()
 	}
@@ -244,6 +253,13 @@ func TestRedisToken(t *testing.T) {
 	if sCnt != 4 {
 		t.Errorf("sCnt %d,should be 4", sCnt)
 	}
+
+	key = "test1"
+	reached, left, erro = redisLimit.Get(key)
+	if reached != false || left != -1 || erro == nil {
+		t.Errorf("%v,%v,%v,should false,-1,not nil", reached, left, erro)
+	}
+	key = "test"
 
 	// test set
 	erro = redisLimit.Set(key, 4, 2*time.Second, max)
@@ -351,6 +367,14 @@ func TestRedisBucket(t *testing.T) {
 	if sCnt != 14 {
 		t.Errorf("%v,sCnt should be 13", sCnt)
 	}
+
+	// test key not exist
+	key = "test1"
+	reached, left, erro = redisLimit.Get(key)
+	if reached != false || left != -1 || erro == nil {
+		t.Errorf("%v,%v,%v,should false,-1,not nil", reached, left, erro)
+	}
+	key = "test"
 
 	// test set
 	erro = redisLimit.Set(key, 4, 8*time.Second, max)
