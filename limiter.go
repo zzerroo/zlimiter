@@ -10,17 +10,26 @@ import (
 )
 
 const (
-	LimitMemFixWindow     = common.LimitMemFixWindow
-	LimitMemSlideWindow   = common.LimitMemSlideWindow
-	LimitMemBucket        = common.LimitMemBucket
-	LimitMemToken         = common.LimitMemToken
-	LimitRedisFixWindow   = common.LimitRedisFixWindow
+	// LimitMemFixWindow 用于标识基于内存的固定窗口限流
+	LimitMemFixWindow = common.LimitMemFixWindow
+	// LimitMemSlideWindow 用于标识基于内存的滑动窗口限流
+	LimitMemSlideWindow = common.LimitMemSlideWindow
+	// LimitMemBucket 用于标识基于内存的bucket限流
+	LimitMemBucket = common.LimitMemBucket
+	// LimitMemToken 用于标识基于内存的Token限流
+	LimitMemToken = common.LimitMemToken
+	// LimitRedisFixWindow 用于标识分布式固定窗口限流
+	LimitRedisFixWindow = common.LimitRedisFixWindow
+	// LimitRedisSlideWindow 用于标识分布式滑动窗口限流
 	LimitRedisSlideWindow = common.LimitRedisSlideWindow
-	LimitRedisBucket      = common.LimitRedisBucket
-	LimitRedisToken       = common.LimitRedisToken
+	// LimitRedisBucket 用于标识分布式bucket限流
+	LimitRedisBucket = common.LimitRedisBucket
+	// LimitRedisToken 用于标识分布式token限流
+	LimitRedisToken = common.LimitRedisToken
 )
 
-// DriverI ...
+// DriverI zlimiter驱动接口，任何zlimiter的driver都要实现该接口
+// Add、Get、Set、Del分别为新增、获取、设置、删除的相关处理函数
 type DriverI interface {
 	Init(...interface{}) error
 	Add(string, int64, time.Duration, ...interface{}) error
@@ -29,60 +38,95 @@ type DriverI interface {
 	Del(string) error
 }
 
-// Limits ...
+// Limits zlimiter实例类，所有功能都是通过该struct实现
 type Limits struct {
-	Driver DriverI
+	driver DriverI
 }
 
-// NewLimiter create a limiter with cacheType、args and init the buffer(or conn pool)
-// LIMIT_TYPE_MEM create a limiter based on buffer cache, LIMIT_TYPE_REDIS create a
-// dist limiter based on redis. if the limiter type is LIMIT_TYPE_REDIS, args include
-// the redis info
-func NewLimiter(limiterType int64, args ...interface{}) (*Limits, error) {
+// NewLimiter 工厂函数，用于创建一个限流器，关于各种限流器的说明请参见：,如果限流器创建过程中
+//	发生错误，则会Log.Fatal错误信息并停止，否则返回相关限流器
+// Input:
+//	limiterType : 需要创建的限流器的类型,具体包括：
+//		LimitMemFixWindow	单机固定窗口限流
+//		LimitMemSlideWindow	单机滑动窗口限流
+//		LimitMemToken	单机token限流
+//		LimitMemBucket	单机桶限流
+//		LimitRedisFixWindow 分布式固定窗口限流
+//		LimitRedisSlideWindow	分布式滑动窗口限流
+//		LimitRedisBucket	分布式桶限流
+//		LimitRedisToken	分布式token限流
+//	args : 初始化参数，主要用于Redis相关的初始化，注意redis初始化需要RedisInfo类型的变量
+// Output:
+//	*Limits : 成功创建的限流器
+func NewLimiter(limiterType int64, args ...interface{}) *Limits {
 	limiter := new(Limits)
 
 	if limiterType == common.LimitMemFixWindow {
-		limiter.Driver = new(memory.CacheFixWindow)
+		limiter.driver = new(memory.CacheFixWindow)
 	} else if limiterType == common.LimitMemSlideWindow {
-		limiter.Driver = new(memory.CacheSlideWindow)
+		limiter.driver = new(memory.CacheSlideWindow)
 	} else if limiterType == common.LimitMemBucket {
-		limiter.Driver = new(memory.Bucket)
+		limiter.driver = new(memory.Bucket)
 	} else if limiterType == common.LimitMemToken {
-		limiter.Driver = new(memory.Token)
+		limiter.driver = new(memory.Token)
 	} else if limiterType == common.LimitRedisFixWindow {
-		limiter.Driver = new(rds.RedisFixWindow)
+		limiter.driver = new(rds.RedisFixWindow)
 	} else if limiterType == common.LimitRedisSlideWindow {
-		limiter.Driver = new(rds.RedisSlideWindow)
+		limiter.driver = new(rds.RedisSlideWindow)
 	} else if limiterType == common.LimitRedisBucket {
-		limiter.Driver = new(rds.RedisBucket)
+		limiter.driver = new(rds.RedisBucket)
 	} else if limiterType == common.LimitRedisToken {
-		limiter.Driver = new(rds.RedisToken)
+		limiter.driver = new(rds.RedisToken)
 	} else {
 		log.Fatalf(common.ErrorInputParam)
 	}
 
-	limiter.Driver.Init(args...)
-	return limiter, nil
+	limiter.driver.Init(args...)
+	return limiter
 }
 
-// Add a limit item to local buffer or redis, limit is the limit count for the key
-// tmSpan is the duration. The redis-based limiter can only be accurate to milliseconds.
+// Add 创建一条基于key的限流规则
+//	Input :
+//		key : 限流标识，用于唯一标识一条限流规则
+//		limit : tmSpan时间段内的限流数，与tmSpan同时实现tmSpan时间段内限流limit次语义
+//		tmSpan : 时间段,与limit同时实现tmSpan时间段内限流limit次语义
+//		others : 其他相关参数，目前bucket和token限流的max值
+//	Output :
+//		error : 成功为nil，否则为具体错误信息
 func (l *Limits) Add(key string, limit int64, tmSpan time.Duration, others ...interface{}) error {
-	return l.Driver.Add(key, limit, tmSpan, others...)
+	return l.driver.Add(key, limit, tmSpan, others...)
 }
 
-// Set update or insert limit item,with the limit info {limits,tmDuration}
+// Set 创建或者重置基于key的限流规则
+//	Input :
+//		key : 限流标识，用于唯一标识一条限流规则
+//		limit : tmSpan时间段内的限流数，与tmSpan同时实现tmSpan时间段内限流limit次语义
+//		tmSpan : 时间段,与limit同时实现tmSpan时间段内限流limit次语义
+//		others : 其他相关参数，目前bucket和token限流的max值
+//	Output :
+//		error : 成功为nil，否则为具体错误信息
 func (l *Limits) Set(key string, limits int64, tmDuration time.Duration, others ...interface{}) error {
-	return l.Driver.Set(key, limits, tmDuration, others...)
+	return l.driver.Set(key, limits, tmDuration, others...)
 }
 
-// Get the left count of the key
+// Get 获取基于key的请求的相关信息，包括：本次访问是否可以放行，剩余可放行的访问数
+//	Input :
+//		key : 限流标识，对应于限流规则
+//	Output :
+//		bool : 访问是否可以放行，当剩余可访问次数<0时候，为true，否则为false。注意，基于bucket的访问
+//			本参数永远为false
+//		int64 : 剩余的可访问次数, 注意，基于bucket本参数永远为-1
+//		error : 相关错误信息，成功为nil 否则为相关错误
 func (l *Limits) Get(key string) (bool, int64, error) {
-	reached, left, erro := l.Driver.Get(key)
+	reached, left, erro := l.driver.Get(key)
 	return reached, left, erro
 }
 
-// Del key from buffer of redis
+// Del 删除基于key的限流
+//	Input :
+//		key : 要删除的限流的标识
+//	Output :
+//		error : 相关错误信息，成功为nil 否则为相关错误
 func (l *Limits) Del(key string) error {
-	return l.Driver.Del(key)
+	return l.driver.Del(key)
 }

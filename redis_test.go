@@ -14,13 +14,10 @@ import (
 func TestRedisFixWindow(t *testing.T) {
 
 	key := "test"
-	redisLimit, erro := zlimiter.NewLimiter(zlimiter.LimitRedisFixWindow, rds.RedisInfo{Address: "127.0.0.1:6379", Passwd: "test"})
-	if erro != nil {
-		t.Error(erro.Error())
-	}
+	redisLimit := zlimiter.NewLimiter(zlimiter.LimitRedisFixWindow, rds.RedisInfo{Address: "127.0.0.1:6379", Passwd: "test"})
 
 	// Test Add
-	erro = redisLimit.Add(key, 10, 2*time.Second)
+	erro := redisLimit.Add(key, 10, 2*time.Second)
 	if erro != nil {
 		t.Error(erro.Error())
 	}
@@ -92,13 +89,10 @@ func TestRedisFixWindow(t *testing.T) {
 func TestRedisSlideWindow(t *testing.T) {
 
 	key := "test"
-	redisLimit, erro := zlimiter.NewLimiter(zlimiter.LimitRedisSlideWindow, rds.RedisInfo{Address: "127.0.0.1:6379", Passwd: "test"})
-	if erro != nil {
-		t.Error(erro.Error())
-	}
+	redisLimit := zlimiter.NewLimiter(zlimiter.LimitRedisSlideWindow, rds.RedisInfo{Address: "127.0.0.1:6379", Passwd: "test"})
 
 	// Test Add
-	erro = redisLimit.Add(key, 10, 2*time.Second)
+	erro := redisLimit.Add(key, 10, 2*time.Second)
 	if erro != nil {
 		t.Error(erro.Error())
 	}
@@ -203,13 +197,10 @@ func TestRedisToken(t *testing.T) {
 	var left, max int64 = 0, 20
 
 	// create
-	redisLimit, erro := zlimiter.NewLimiter(zlimiter.LimitRedisToken, rds.RedisInfo{Address: "127.0.0.1:6379", Passwd: "test"})
-	if erro != nil {
-		t.Errorf("error:%s", erro.Error())
-	}
+	redisLimit := zlimiter.NewLimiter(zlimiter.LimitRedisToken, rds.RedisInfo{Address: "127.0.0.1:6379", Passwd: "test"})
 
 	// test add
-	erro = redisLimit.Add(key, 4, 4*time.Second, max)
+	erro := redisLimit.Add(key, 4, 4*time.Second, max)
 	if erro != nil {
 		t.Errorf("error:%s", erro.Error())
 	}
@@ -317,12 +308,9 @@ func TestRedisBucket(t *testing.T) {
 	reached := false
 	var left, max, sCnt, fCnt int64 = 0, 20, 0, 0
 
-	redisLimit, erro := zlimiter.NewLimiter(zlimiter.LimitRedisBucket, rds.RedisInfo{Address: "127.0.0.1:6379", Passwd: "test"})
-	if erro != nil {
-		t.Errorf("error:%s", erro.Error())
-	}
+	redisLimit := zlimiter.NewLimiter(zlimiter.LimitRedisBucket, rds.RedisInfo{Address: "127.0.0.1:6379", Passwd: "test"})
 
-	erro = redisLimit.Add(key, 4, 4*time.Second, max)
+	erro := redisLimit.Add(key, 4, 4*time.Second, max)
 	if erro != nil {
 		t.Errorf("error:%s", erro.Error())
 	}

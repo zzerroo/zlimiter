@@ -12,17 +12,14 @@ import (
 func TestMem(t *testing.T) {
 	var windowTypes = [2]int64{zlimiter.LimitMemFixWindow, zlimiter.LimitMemSlideWindow}
 	for _, wdwType := range windowTypes {
-		memLimit, erro := zlimiter.NewLimiter(int64(wdwType))
-		if erro != nil {
-			t.Error(erro)
-		}
+		memLimit := zlimiter.NewLimiter(int64(wdwType))
 
 		// test add
 		key := "test"
 		var reached bool = false
 		var left int64 = 0
 
-		erro = memLimit.Add(key, 4, 1*time.Second)
+		erro := memLimit.Add(key, 4, 1*time.Second)
 		if erro != nil {
 			t.Error(erro)
 		}
@@ -128,16 +125,13 @@ func TestMem(t *testing.T) {
 
 func TestToken(t *testing.T) {
 	// create
-	memLimit, erro := zlimiter.NewLimiter(zlimiter.LimitMemToken)
-	if erro != nil {
-		t.Errorf("error:%s", erro.Error())
-	}
+	memLimit := zlimiter.NewLimiter(zlimiter.LimitMemToken)
 
 	// test add
 	key := "test"
 	var reached bool = false
 	var left, max int64 = 0, 20
-	erro = memLimit.Add(key, 4, 4*time.Second, max)
+	erro := memLimit.Add(key, 4, 4*time.Second, max)
 	if erro != nil {
 		t.Errorf("error:%s", erro.Error())
 	}
@@ -240,10 +234,7 @@ func TestToken(t *testing.T) {
 }
 
 func TestBucket(t *testing.T) {
-	memLimit, erro := zlimiter.NewLimiter(zlimiter.LimitMemBucket)
-	if erro != nil {
-		t.Errorf("error:%s", erro.Error())
-	}
+	memLimit := zlimiter.NewLimiter(zlimiter.LimitMemBucket)
 
 	// test add
 	key := "test"
@@ -251,7 +242,7 @@ func TestBucket(t *testing.T) {
 	var left, max, sCnt, fCnt int64 = 0, 20, 0, 0
 	left = 0
 
-	erro = memLimit.Add(key, 4, 4*time.Second, max)
+	erro := memLimit.Add(key, 4, 4*time.Second, max)
 	if erro != nil {
 		t.Errorf("error:%s", erro.Error())
 	}
