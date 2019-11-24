@@ -39,6 +39,7 @@ type tokenItem struct {
 type bucketItem struct {
 	item              // 限流基础信息
 	StartAt time.Time //
+	cteDuNS int64
 }
 
 // 桶限流计数信息
@@ -81,8 +82,8 @@ func (c *CacheSlideWindow) Init(...interface{}) error {
 // Add 滑动窗口限流中新增一条限流规则。注意,如果相应key存在则会更新相关信息
 //	Input :
 //		key : 限流标识，用于唯一标识一条限流规则
-//		limit : tmSpan时间段内的限流数，与tmSpan同时实现tmSpan时间段内限流limit次的语义
-//		tmDuriation : 时间段, 与limit同时实现tmSpan时间段内限流limit次的语义
+//		limit : tmDuriation时间段内的限流数，与tmDuriation同时实现tmDuriation时间段内限流limit次的语义
+//		tmDuriation : 时间段, 与limit同时实现tmDuriation时间段内限流limit次的语义
 //		others : 未启用
 //	Output :
 //		error : 成功为nil，否则为具体错误信息
@@ -469,6 +470,7 @@ func (b *Bucket) Add(key string, limits int64, tmDuriation time.Duration, others
 			Limits:   limits,
 			Druation: tmDuriation,
 		},
+		cteDuNS: tmDuriation.Nanoseconds() / limits,
 	}
 
 	b.rwMut.Lock()
@@ -510,6 +512,7 @@ func (b *Bucket) Set(key string, limits int64, tmDuriation time.Duration, others
 			Limits:   limits,
 			Druation: tmDuriation,
 		},
+		cteDuNS: tmDuriation.Nanoseconds() / limits,
 	}
 	b.rwMut.Lock()
 	b.items[key] = itemTmp
@@ -537,7 +540,7 @@ func (b *Bucket) Del(key string) error {
 	return nil
 }
 
-// getSyncMap 获得一条规则的计数信息
+// getSyncMap 获得一条规则的计数信息，为了便于处理，bucket中计数信息会单独存储
 //	Input :
 //		key : 规则的标识
 //	Output :
@@ -557,6 +560,12 @@ func (b *Bucket) getSyncMap(key string) (bucketItemCnt, error) {
 	return itemCntTmp, nil
 }
 
+// writeTimeout 写一条数据至规则的等待队列中，规则的等待队列为带缓存的channel（长度为max）。
+//	写队列时候如果能改直接写入，则认为队列不满，否则认定队列已满
+//	Input :
+//		ch : 规则队列，用于实现请求的计数访问
+//	Output :
+//		bool : true代表写入成功，否则代表写入失败
 func (b *Bucket) writeTimeout(ch chan<- struct{}) bool {
 	select {
 	case ch <- struct{}{}:
@@ -566,8 +575,16 @@ func (b *Bucket) writeTimeout(ch chan<- struct{}) bool {
 	}
 }
 
-// Get ...
+// Get 获取Bucket限流中规则对应的信息，包括:请求数目是否已经<0，剩余请求数目。宏观上所有的Get请求间会以固定的速率返回
+//	同时如果请求数目超过了bucket的max限制，请求会被抛弃。Get的以channel实现缓存队列，以sleep实现请求间的固定间隔
+//	Input :
+//		key : 规则的唯一标识
+//	Output :
+//		bool : 规则是否剩余请求数目<0
+//		int64 : 规则剩余请求数目
+//		error : 成功则为nil，否则为对应错误
 func (b *Bucket) Get(key string) (bool, int64, error) {
+	// 获得bucketItemCnt及相应channel
 	itemCntTmp, erro := b.getSyncMap(key)
 	if erro != nil {
 		return false, -1, errors.New(erro.Error())
@@ -581,17 +598,18 @@ func (b *Bucket) Get(key string) (bool, int64, error) {
 	itemTmp, ok := b.items[key]
 	if !ok {
 		b.rwMut.Unlock()
-		<-itemCntTmp.WaitQueue
+		<-itemCntTmp.WaitQueue //请求入队
 		return false, -1, errors.New(common.ErrorUnknown)
 	}
 
 	var timeWait int64
 	tmCur := time.Now()
 
+	// 如果是规则不是创建后首次get请求，则计算需要sleep的时间
 	if !itemTmp.StartAt.IsZero() {
-		cteDuNS := itemTmp.Druation.Nanoseconds() / itemTmp.Limits
+		//cteDuNS := itemTmp.Druation.Nanoseconds() / itemTmp.Limits
 		tmDuPassed := tmCur.Sub(itemTmp.StartAt)
-		timeWait = cteDuNS - tmDuPassed.Nanoseconds()%cteDuNS
+		timeWait = itemTmp.cteDuNS - tmDuPassed.Nanoseconds()%itemTmp.cteDuNS
 
 		if timeWait != 0 {
 			time.Sleep(time.Duration(timeWait) * time.Nanosecond)
@@ -602,6 +620,6 @@ func (b *Bucket) Get(key string) (bool, int64, error) {
 	b.items[key] = itemTmp
 	b.rwMut.Unlock()
 
-	<-itemCntTmp.WaitQueue
+	<-itemCntTmp.WaitQueue //请求出队
 	return false, -1, nil
 }

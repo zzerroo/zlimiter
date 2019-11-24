@@ -20,6 +20,7 @@ const (
 	ErrorInputParam   = "error bad input param"
 	ErrorReqOverFlow  = "error request overflow"
 	ErrorItemNotExist = "error item not exist"
+	ErrorLoadScritp   = "error load script"
 )
 
 // // Limiter ...
