@@ -220,8 +220,8 @@ func (r *RedisToken) Init(args ...interface{}) error {
 	return nil
 }
 
-// Add 新增一条规则，该函数会调用RedisAddScript完成相关规则的创建。注意:该函数会调用获取时间机制，请务必保证
-//	集群中各主机间时间的同步，具体时间同步建议使用ntp服务,参见:https://linux.die.net/man/8/ntpdate
+// Add 新增一条规则，该函数会调用RedisAddScript完成相关规则的创建。注意:1. 该函数会调用获取时间机制，请务必保证
+//	集群中各主机间时间的同步，具体时间同步建议使用ntp服务,参见:http://linux.vbird.org/linux_server/0440ntp.php 2.系统对时间的操作精确到了ms级别
 //	Input :
 //		key : 限流标识，用于唯一标识一条限流规则
 //		limit : tmDuriation时间段内的限流数，与tmDuriation同时实现tmDuriation时间段内限流limit次的语义
@@ -244,7 +244,9 @@ func (r *RedisProxy) Add(key string, limit int64, tmDuration time.Duration, othe
 	return errors.New(common.ErrorUnknown)
 }
 
-// Get 获取key对应规则的信息，包括：剩余请求数是否<0，剩余请求数。注意:集群中各服务器之间应保持时间同步
+// Get 获取key对应规则的信息，包括：剩余请求数是否<0，剩余请求数。注意:1. 系统不会进行时间同步，集群中各服务器之间应采用第三方手段保持时间同步，
+//	集群间时间同步方法，参见：http://linux.vbird.org/linux_server/0440ntp.php 2.系统对时间的获取精确到了毫秒级
+//	各限流方式说明参见lua-string.go
 //	Input :
 //		key : 限流标识，用于标识要获取限流相关信息的规则
 //	Output :
@@ -261,9 +263,9 @@ func (r *RedisProxy) Get(key string) (bool, int64, error) {
 	}
 
 	if left, ok := rsp.(int64); ok {
-		if left == -2 {
+		if left == -2 { // 规则未设置
 			return false, -1, errors.New(common.ErrorItemNotExist)
-		} else if left == -1 {
+		} else if left == -1 { //访问请求超过限额
 			return true, 0, nil
 		}
 
@@ -273,7 +275,15 @@ func (r *RedisProxy) Get(key string) (bool, int64, error) {
 	return false, 0, errors.New(common.ErrorUnknown)
 }
 
-// Set 重置或者新增一条规则，具体参见Add
+// Set 重置或者新增一条规则，该函数调用RedisSetScript脚本完成相关机制，注意：1. 该函数在相关key存在时，会重置规则信息。
+//	2. 同样各集群应保证时间同步。3.系统中时间精确到了微妙级别
+//	Input :
+//		key : 规则ID
+//		limit : tmDuriation时间段内的限额数，与tmDuriation同时实现tmDuriation时间段内限流limit次的语义
+//		tmDuriation : 时间段, 与limit同时实现tmDuriation时间段内限流limit次的语义
+//		others : 滑动窗口、固定窗口限流中未用，bucket中表示最大缓存的请求数目，token中表示最大token数量
+//	Output :
+//		erro : nil或者相关错误
 func (r *RedisProxy) Set(key string, limit int64, tmDuration time.Duration, others ...interface{}) error {
 	conn := r.RedisClient.Get()
 	defer conn.Close()
@@ -289,7 +299,11 @@ func (r *RedisProxy) Set(key string, limit int64, tmDuration time.Duration, othe
 	return errors.New(common.ErrorUnknown)
 }
 
-// Del ...
+// Del 删除key对应规则的所有信息，key不存在并不会报错
+//	Input :
+//		key : 规则ID
+//	Output :
+//		erro : nil或者相关错误
 func (r *RedisProxy) Del(key string) error {
 	conn := r.RedisClient.Get()
 	defer conn.Close()
@@ -297,11 +311,20 @@ func (r *RedisProxy) Del(key string) error {
 	return r.Scripts[common.RedisDelScript].SendHash(conn, key)
 }
 
-// Get ...
+// Get 获取Bucket限流中key对应规则的信息，包括：剩余请求数是否<0，剩余请求数。Bucket限流会对所有的请求进行缓存，并对抛弃超过max个后的请求，
+//	系统通过ReidsChkScript脚本实现缓存数目的计算，每次请求如果当前请求数目超过了max 则报错返回，为了保证Get时候计数值的正确性，Get时还需要进行Double Check
+//	注意:1. 系统不会进行时间同步，集群间时间同步方法，参见：http://linux.vbird.org/linux_server/0440ntp.php 2.系统对时间的获取精确到了毫秒级
+//	Input :
+//		key : 限流标识，用于标识要获取限流相关信息的规则
+//	Output :
+//		bool : 当前剩余请求数是否<0
+//		int64 : 当前剩余请求数目
+//		error : 成功为nil，否则为具体错误信息
 func (r *RedisBucket) Get(key string) (bool, int64, error) {
 	conn := r.RedisClient.Get()
 	defer conn.Close()
 
+	// 校验当前缓存的请求数目是否已经超过了max限制
 	rsp, erro := r.Scripts[common.ReidsChkScript].Do(conn, key)
 	if erro != nil {
 		return false, -1, erro
