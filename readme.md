@@ -18,13 +18,13 @@
 
 ​	对于具有集中入口服务的系统、简单的单机服务，如API Gateway等，zlimiter提供了基于内存的限流处理。
 
-![](/Users/zhangyuxin/Downloads/集中式.png)
+![](./centralized.png)
 
 ## 分布式限流
 
 ​	对于一些多机部署的集群，zlimiter提供了基于redis lua的分布式处理方式，如下所示：
 
-![](/Users/zhangyuxin/Downloads/分布式.png)
+![](./distributed.png)
 
 # zlimiter支持的限流算法
 
@@ -41,7 +41,7 @@ memLimit := zlimiter.NewLimiter(zlimiter.LimitMemFixWindow)
 创建分布式固定窗口限流器：
 
 ```go
-	redisLimit := zlimiter.NewLimiter(zlimiter.LimitRedisFixWindow, rds.RedisInfo{Address: "127.0.0.1:6379", Passwd: "test"})
+redisLimit := zlimiter.NewLimiter(zlimiter.LimitRedisFixWindow, rds.RedisInfo{Address: "127.0.0.1:6379", Passwd: "test"})
 ```
 
 ## 滑动窗口限流
@@ -67,13 +67,13 @@ Bucket限流模拟了水桶注水、滴水的过程，所有的请求都会以�
 创建集中式bucket窗口限流器：
 
 ```go
-	memLimit := zlimiter.NewLimiter(zlimiter.LimitMemBucket)
+memLimit := zlimiter.NewLimiter(zlimiter.LimitMemBucket)
 ```
 
 创建分布式bucket限流器：
 
 ```
-	redisLimit := zlimiter.NewLimiter(zlimiter.LimitRedisBucket, rds.RedisInfo{Address: "127.0.0.1:6379", Passwd: "test"})
+redisLimit := zlimiter.NewLimiter(zlimiter.LimitRedisBucket, rds.RedisInfo{Address: "127.0.0.1:6379", Passwd: "test"})
 ```
 
 Token限流
@@ -83,13 +83,13 @@ Token限流以恒定的速率产生token，所有放行的请求都能够得到�
 创建集中式token限流器：
 
 ```go
-	memLimit := zlimiter.NewLimiter(zlimiter.LimitMemToken)
+memLimit := zlimiter.NewLimiter(zlimiter.LimitMemToken)
 ```
 
 创建分布式token限流器：
 
 ```go
-	redisLimit := zlimiter.NewLimiter(zlimiter.LimitRedisToken, rds.RedisInfo{Address: "127.0.0.1:6379", Passwd: "test"})
+redisLimit := zlimiter.NewLimiter(zlimiter.LimitRedisToken, rds.RedisInfo{Address: "127.0.0.1:6379", Passwd: "test"})
 ```
 
 # zlimiter支持的web框架
