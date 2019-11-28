@@ -244,35 +244,34 @@ func (r *RedisProxy) Add(key string, limit int64, tmDuration time.Duration, othe
 	return errors.New(common.ErrorUnknown)
 }
 
-// Get 获取key对应规则的信息，包括：剩余请求数是否<0，剩余请求数。注意:1. 系统不会进行时间同步，集群中各服务器之间应采用第三方手段保持时间同步，
+// Get 获取key对应规则剩余请求数。注意:1. 系统不会进行时间同步，集群中各服务器之间应采用第三方手段保持时间同步，
 //	集群间时间同步方法，参见：http://linux.vbird.org/linux_server/0440ntp.php 2.系统对时间的获取精确到了毫秒级
 //	各限流方式说明参见lua-string.go
 //	Input :
 //		key : 限流标识，用于标识要获取限流相关信息的规则
 //	Output :
-//		bool : 当前剩余请求数是否<0
 //		int64 : 当前剩余请求数目
 //		error : 成功为nil，否则为具体错误信息
-func (r *RedisProxy) Get(key string) (bool, int64, error) {
+func (r *RedisProxy) Get(key string) (int64, error) {
 	conn := r.RedisClient.Get()
 	defer conn.Close()
 
 	rsp, erro := r.Scripts[common.RedisGetScript].Do(conn, key, time.Now().UnixNano()/1e3)
 	if erro != nil {
-		return false, -1, erro
+		return common.ErrorReturnNoMeans, erro
 	}
 
 	if left, ok := rsp.(int64); ok {
 		if left == -2 { // 规则未设置
-			return false, -1, errors.New(common.ErrorItemNotExist)
+			return common.ErrorReturnItemNotExist, nil
 		} else if left == -1 { //访问请求超过限额
-			return true, 0, nil
+			return common.ErrorReturnNoLeft, nil
 		}
 
-		return left < 0, left, nil
+		return left, nil
 	}
 
-	return false, 0, errors.New(common.ErrorUnknown)
+	return common.ErrorReturnNoMeans, errors.New(common.ErrorUnknown)
 }
 
 // Set 重置或者新增一条规则，该函数调用RedisSetScript脚本完成相关机制，注意：1. 该函数在相关key存在时，会重置规则信息。
@@ -311,45 +310,45 @@ func (r *RedisProxy) Del(key string) error {
 	return r.Scripts[common.RedisDelScript].SendHash(conn, key)
 }
 
-// Get 获取Bucket限流中key对应规则的信息，包括：剩余请求数是否<0，剩余请求数。Bucket限流会对所有的请求进行缓存，并对抛弃超过max个后的请求，
+// Get 获取Bucket限流中key对应规则剩余请求数。Bucket限流会对所有的请求进行缓存，并对抛弃超过max个后的请求，
 //	系统通过ReidsChkScript脚本实现缓存数目的计算，每次请求如果当前请求数目超过了max 则报错返回，为了保证Get时候计数值的正确性，Get时还需要进行Double Check
 //	注意:1. 系统不会进行时间同步，集群间时间同步方法，参见：http://linux.vbird.org/linux_server/0440ntp.php 2.系统对时间的获取精确到了毫秒级
 //	Input :
 //		key : 限流标识，用于标识要获取限流相关信息的规则
 //	Output :
-//		bool : 当前剩余请求数是否<0
-//		int64 : 当前剩余请求数目
+//		int64 : 当前剩余请求数目,<-1000为错误，具体参见common.ErrorReturn*
 //		error : 成功为nil，否则为具体错误信息
-func (r *RedisBucket) Get(key string) (bool, int64, error) {
+func (r *RedisBucket) Get(key string) (int64, error) {
 	conn := r.RedisClient.Get()
 	defer conn.Close()
 
 	// 校验当前缓存的请求数目是否已经超过了max限制
 	rsp, erro := r.Scripts[common.ReidsChkScript].Do(conn, key)
 	if erro != nil {
-		return false, -1, erro
+		return common.ErrorReturnNoMeans, erro
 	}
+
 	if chckStatus, ok := rsp.(int64); ok {
-		if chckStatus == -1 {
-			return false, -1, errors.New(common.ErrorReqOverFlow)
-		} else if chckStatus == -2 {
-			return false, -1, errors.New(common.ErrorItemNotExist)
+		if chckStatus == -1 { // 无剩余限额
+			return common.ErrorReturnNoLeft, nil
+		} else if chckStatus == -2 { // 规则不存在
+			return common.ErrorReturnItemNotExist, nil
 		}
 	}
 
 	rsp, erro = r.Scripts[common.RedisGetScript].Do(conn, key, time.Now().UnixNano()/1e3)
 	if erro != nil {
-		return false, -1, erro
+		return common.ErrorReturnNoMeans, erro
 	}
 
 	if waitTm, ok := rsp.(int64); ok {
 		if waitTm >= 0 {
 			time.Sleep(time.Duration(waitTm) * time.Microsecond)
-			return false, -1, nil
-		} else if waitTm == -1 {
-			return false, -1, errors.New(common.ErrorReqOverFlow)
+			return common.ErrorReturnBucket, nil
+		} else if waitTm == -1 { // overflow
+			return common.ErrorReturnNoLeft, nil
 		}
 	}
 
-	return false, 0, errors.New(common.ErrorUnknown)
+	return common.ErrorReturnNoMeans, errors.New(common.ErrorUnknown)
 }

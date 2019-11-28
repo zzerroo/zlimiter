@@ -26,6 +26,15 @@ const (
 	LimitRedisBucket = common.LimitRedisBucket
 	// LimitRedisToken 用于标识分布式token限流
 	LimitRedisToken = common.LimitRedisToken
+
+	// ErrorReturnNoLeft 规则已无限额
+	ErrorReturnNoLeft = common.ErrorReturnNoLeft
+	// ErrorReturnItemNotExist key对应规则不存在
+	ErrorReturnItemNotExist = common.ErrorReturnItemNotExist
+	// ErrorReturnNoMeans 无意义返回值，用于erro!=nil时
+	ErrorReturnNoMeans = common.ErrorReturnNoMeans
+	// ErrorReturnBucket Bucket限流返回值 无意义固定值
+	ErrorReturnBucket = common.ErrorReturnBucket
 )
 
 // DriverI zlimiter驱动接口，任何zlimiter的driver都要实现该接口
@@ -33,7 +42,7 @@ const (
 type DriverI interface {
 	Init(...interface{}) error
 	Add(string, int64, time.Duration, ...interface{}) error
-	Get(string) (bool, int64, error)
+	Get(string) (int64, error)
 	Set(string, int64, time.Duration, ...interface{}) error
 	Del(string) error
 }
@@ -117,9 +126,9 @@ func (l *Limits) Set(key string, limits int64, tmDuration time.Duration, others 
 //			本参数永远为false
 //		int64 : 剩余的可访问次数, 注意，基于bucket本参数永远为-1
 //		error : 相关错误信息，成功为nil 否则为相关错误
-func (l *Limits) Get(key string) (bool, int64, error) {
-	reached, left, erro := l.driver.Get(key)
-	return reached, left, erro
+func (l *Limits) Get(key string) (int64, error) {
+	left, erro := l.driver.Get(key)
+	return left, erro
 }
 
 // Del 删除基于key的限流

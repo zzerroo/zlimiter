@@ -21,6 +21,11 @@ const (
 	ErrorReqOverFlow  = "error request overflow"
 	ErrorItemNotExist = "error item not exist"
 	ErrorLoadScritp   = "error load script"
+
+	ErrorReturnNoLeft       = -1
+	ErrorReturnItemNotExist = -1001
+	ErrorReturnNoMeans      = -1002
+	ErrorReturnBucket       = -1003
 )
 
 // // Limiter ...

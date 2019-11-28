@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/labstack/gommon/log"
 	"github.com/zzerroo/zlimiter/driver/common"
 )
 
@@ -140,16 +141,21 @@ func (c *CacheSlideWindow) Del(key string) error {
 	return nil
 }
 
-// Get 滑动窗口限流中获取key对应规则的信息，包括：剩余请求数是否<0，剩余请求数。滑动窗口的限流维护了基于
+// Get 滑动窗口限流中获取key对应剩余请求数。滑动窗口的限流维护了基于
 //	时间的请求队列，每次请求会根据当前时间和规则对应的时间段(Duration)重新计算滑动窗口的起始时间，并根据
 //	滑动窗口时间段内请求数目判断和返回相关限流信息
 //	Input :
 //		key : 限流标识，用于标识要获取限流相关信息的规则
 //	Output :
-//		bool : 当前窗口中剩余请求数是否<0
-//		int64 : 当前敞口中剩余请求数目
+//		int64 : 当前敞口中剩余请求数目，<-1000为错误，具体参见common.ErrorReturn*
 //		error : 成功为nil，否则为具体错误信息
-func (c *CacheSlideWindow) Get(key string) (bool, int64, error) {
+func (c *CacheSlideWindow) Get(key string) (int64, error) {
+	defer func() {
+		if p := recover(); p != nil {
+			log.Errorf(common.ErrorUnknown)
+		}
+	}()
+
 	c.rwMut.Lock()
 	defer c.rwMut.Unlock()
 
@@ -158,7 +164,7 @@ func (c *CacheSlideWindow) Get(key string) (bool, int64, error) {
 
 	// 相关key不存在，返回错误common.ErrorInputParam
 	if itemTmp, ok = c.items[key]; !ok {
-		return false, -1, errors.New(common.ErrorInputParam)
+		return common.ErrorReturnItemNotExist, nil
 	}
 
 	cur := time.Now()
@@ -176,14 +182,14 @@ func (c *CacheSlideWindow) Get(key string) (bool, int64, error) {
 
 	// 请求数已经超过了限制
 	if int64(len(itemTmp.ReqList)) >= itemTmp.Limits {
-		return true, -1, nil
+		return common.ErrorReturnNoLeft, nil
 	}
 
 	// 追加当前请求到请求队列
 	itemTmp.ReqList = append(itemTmp.ReqList, cur)
 	left = itemTmp.Limits - int64(len(itemTmp.ReqList))
 	c.items[key] = itemTmp
-	return left < 0, left, nil
+	return left, nil
 }
 
 // Init 创建CacheFixWindow中规则map
@@ -259,16 +265,15 @@ func (c *CacheFixWindow) Del(key string) error {
 	return nil
 }
 
-// Get 获得固定窗口限流中key对应规则的信息，包括：剩余请求数是否<0，剩余请求数。根据当前时间和规则创建或者
+// Get 获得固定窗口限流中key对应规则的剩余请求数目。根据当前时间和规则创建或者
 //	重置的时间间隔，Get会计算当前请求所在的窗口的索引，如果该索引和上次请求的索引相同，则判断为旧窗口 和旧请求数目
 //	同时进行计数，否则则判断为新窗口 重新开始计数
 //	Input :
 //		key : 限流标识，用于标识要获取限流相关信息的规则
 //	Output :
-//		bool : 当前窗口中剩余请求数是否<0
-//		int64 : 当前窗口中剩余请求数目
+//		int64 : 当前窗口中剩余请求的数目, <-1000产生了错误，具体参见common.ErrorReturn*
 //		error : 成功为nil，否则为具体错误信息
-func (c *CacheFixWindow) Get(key string) (bool, int64, error) {
+func (c *CacheFixWindow) Get(key string) (int64, error) {
 	c.rwMut.Lock()
 	defer c.rwMut.Unlock()
 
@@ -277,7 +282,7 @@ func (c *CacheFixWindow) Get(key string) (bool, int64, error) {
 
 	// 如果相关key不存在，则返回ErrorInputParam
 	if itemTmp, ok = c.items[key]; !ok {
-		return false, -1, errors.New(common.ErrorInputParam)
+		return common.ErrorReturnItemNotExist, nil
 	}
 
 	curTm := time.Now()
@@ -291,14 +296,14 @@ func (c *CacheFixWindow) Get(key string) (bool, int64, error) {
 		itemTmp.CurCnt = 1
 
 		c.items[key] = itemTmp
-		return false, itemTmp.Limits - itemTmp.CurCnt, nil
+		return itemTmp.Limits - itemTmp.CurCnt, nil
 	}
 
 	// 已经存在的窗口，根据计CurCnt计数剩余请求数
 	left := itemTmp.Limits - itemTmp.CurCnt - 1
 	itemTmp.CurCnt = itemTmp.CurCnt + 1
 	c.items[key] = itemTmp
-	return left < 0, left, nil
+	return left, nil
 }
 
 // Init 创建Token限流中对应的map
@@ -401,23 +406,22 @@ func (t *Token) Set(key string, limits int64, tmDuriation time.Duration, others 
 	return nil
 }
 
-// Get 获取Token限流中规则对应的信息，包括:请求数目是否已经<0，剩余请求数目。每次Get请求都会根据token
+// Get 获取Token限流中规则对应剩余请求数目。每次Get请求都会根据token
 //	产生速度(CreateRateNs)，距离上次请求已经逝去时间（time.Now().Sub(StartAt)），上次请求剩余的token数目（TkLeft）,计算当前
 //	剩余token数目，并返回限流相关信息
 //	Input :
 //		key : 规则的唯一标识
 //	Output :
-//		bool : 规则是否剩余请求数目<0
-//		int64 : 规则剩余请求数目
+//		int64 : 规则剩余请求数目，<-1000为错误，具体参见common.ErrorReturn*
 //		error : 成功则为nil，否则为对应错误
-func (t *Token) Get(key string) (bool, int64, error) {
+func (t *Token) Get(key string) (int64, error) {
 	t.rwMut.Lock()
 	defer t.rwMut.Unlock()
 
 	// 相关规则不存在，则返回ErrorInputParam错误
 	itemTmp, ok := t.items[key]
 	if !ok {
-		return false, -1, errors.New(common.ErrorInputParam)
+		return common.ErrorReturnItemNotExist, nil
 	}
 
 	// 分别计算距离上次请求产生的token数目
@@ -432,9 +436,10 @@ func (t *Token) Get(key string) (bool, int64, error) {
 		itemTmp.StartAt = time.Now()
 		t.items[key] = itemTmp
 
-		return false, itemTmp.TkLeft, nil
+		return itemTmp.TkLeft, nil
 	}
-	return true, -1, nil
+
+	return common.ErrorReturnNoLeft, nil
 }
 
 // Init Bucket限流创建相关map
@@ -546,18 +551,18 @@ func (b *Bucket) Del(key string) error {
 //	Output :
 //		bucketItemCnt : error为nil则返回规则的计数信息，否则为空结构
 //		error : 成功则返回nil，否则为相关错误信息
-func (b *Bucket) getSyncMap(key string) (bucketItemCnt, error) {
+func (b *Bucket) getSyncMap(key string) (bucketItemCnt, string) {
 	itemCntTmpIn, ok := b.itemCnt.Load(key)
 	if !ok {
-		return bucketItemCnt{}, errors.New(common.ErrorItemNotExist)
+		return bucketItemCnt{}, common.ErrorItemNotExist
 	}
 
 	itemCntTmp, ok := itemCntTmpIn.(bucketItemCnt)
 	if !ok {
-		return bucketItemCnt{}, errors.New(common.ErrorUnknown)
+		return bucketItemCnt{}, common.ErrorUnknown
 	}
 
-	return itemCntTmp, nil
+	return itemCntTmp, ""
 }
 
 // writeTimeout 写一条数据至规则的等待队列中，规则的等待队列为带缓存的channel（长度为max）。
@@ -575,31 +580,32 @@ func (b *Bucket) writeTimeout(ch chan<- struct{}) bool {
 	}
 }
 
-// Get 获取Bucket限流中规则对应的信息，包括:请求数目是否已经<0，剩余请求数目。宏观上所有的Get请求间会以固定的速率返回
+// Get 获取Bucket限流中规则剩余请求数目。宏观上所有的Get请求间会以固定的速率返回
 //	同时如果请求数目超过了bucket的max限制，请求会被抛弃。Get的以channel实现缓存队列，以sleep实现请求间的固定间隔
 //	Input :
 //		key : 规则的唯一标识
 //	Output :
-//		bool : 规则是否剩余请求数目<0
-//		int64 : 规则剩余请求数目
+//		int64 : 规则剩余请求数目，<-1000为错误，具体参见common.ErrorReturn*
 //		error : 成功则为nil，否则为对应错误
-func (b *Bucket) Get(key string) (bool, int64, error) {
+func (b *Bucket) Get(key string) (int64, error) {
 	// 获得bucketItemCnt及相应channel
 	itemCntTmp, erro := b.getSyncMap(key)
-	if erro != nil {
-		return false, -1, errors.New(erro.Error())
+	if erro == common.ErrorItemNotExist {
+		return common.ErrorReturnItemNotExist, nil
+	} else if erro == common.ErrorUnknown {
+		return common.ErrorReturnNoMeans, errors.New(common.ErrorUnknown)
 	}
 
 	if false == b.writeTimeout(itemCntTmp.WaitQueue) {
-		return false, -1, errors.New(common.ErrorReqOverFlow)
+		return common.ErrorReturnNoLeft, nil
 	}
 
 	b.rwMut.Lock()
 	itemTmp, ok := b.items[key]
 	if !ok {
 		b.rwMut.Unlock()
-		<-itemCntTmp.WaitQueue //请求入队
-		return false, -1, errors.New(common.ErrorUnknown)
+		<-itemCntTmp.WaitQueue //请求出队
+		return common.ErrorReturnItemNotExist, nil
 	}
 
 	var timeWait int64
@@ -621,5 +627,5 @@ func (b *Bucket) Get(key string) (bool, int64, error) {
 	b.rwMut.Unlock()
 
 	<-itemCntTmp.WaitQueue //请求出队
-	return false, -1, nil
+	return common.ErrorReturnBucket, nil
 }
