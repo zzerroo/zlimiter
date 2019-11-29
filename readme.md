@@ -76,7 +76,7 @@ memLimit := zlimiter.NewLimiter(zlimiter.LimitMemBucket)
 redisLimit := zlimiter.NewLimiter(zlimiter.LimitRedisBucket, rds.RedisInfo{Address: "127.0.0.1:6379", Passwd: "test"})
 ```
 
-Token限流
+##Token限流
 
 Token限流以恒定的速率产生token，所有放行的请求都能够得到一个token，当token数量超过了token桶的容量时，token会被抛弃。zlimiter中创建集中式、分布式token限流器代码如下：
 
