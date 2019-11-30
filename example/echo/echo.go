@@ -1,12 +1,11 @@
 package main
 
 import (
-	"log"
 	"net/http"
 	"strings"
 	"time"
-	"zlimiter"
-	"zlimiter/driver"
+
+	"github.com/zzerroo/zlimiter"
 
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
@@ -23,16 +22,17 @@ func (l *Limiter) Limit(next echo.HandlerFunc) echo.HandlerFunc {
 		ipInfos := c.Request().RemoteAddr
 		ips := strings.Split(ipInfos, ":")
 
-		bReached, left, erro := l.L.Get(ips[0])
-		if erro != nil {
-			log.Fatal(erro.Error())
-		}
-		if left == -2 { // nerver add
-			l.L.Add(ips[0], 10, 2*time.Second)
+		left, erro := l.L.Get(ips[0])
+		if left == zlimiter.ErrorReturnItemNotExist { // nerver add
+			l.L.Add(ips[0], 10, 1*time.Second)
 			l.L.Get(ips[0])
 		}
 
-		if bReached == true && left == -1 { // reach the limit
+		if left >= 0 && erro != nil {
+			return c.String(http.StatusOK, http.StatusText(http.StatusOK))
+		}
+
+		if left == -1 { // reach the limit
 			return c.String(http.StatusTooManyRequests, http.StatusText(http.StatusTooManyRequests))
 		}
 
@@ -55,7 +55,7 @@ func main() {
 		return c.String(http.StatusOK, http.StatusText(http.StatusOK))
 	})
 
-	l.L, erro = zlimiter.NewLimiter(zlimiter.LIMIT_TYPE_REDIS, driver.RedisInfo{Host: "127.0.0.1:6379", Passwd: "xxxx"})
+	l.L = zlimiter.NewLimiter(zlimiter.LimitMemFixWindow)
 
 	e.Logger.Fatal(e.Start(":8080"))
 }

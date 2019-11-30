@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-	"zlimiter/driver"
 
 	"github.com/zzerroo/zlimiter"
 
@@ -26,19 +25,21 @@ func Limit() gin.HandlerFunc {
 		ipInfos := c.Request.RemoteAddr
 		ips := strings.Split(ipInfos, ":")
 
-		bReached, left, erro := limiter.Get(ips[0])
-		if erro != nil {
-			log.Fatal(erro.Error())
-		}
-		if left == -2 { // nerver add
-			limiter.Add(ips[0], 10, 2*time.Second)
+		left, erro := limiter.Get(ips[0])
+		if left == zlimiter.ErrorReturnItemNotExist { // nerver add
+			limiter.Add(ips[0], 10, 1*time.Second)
 			limiter.Get(ips[0])
 		}
 
-		if bReached == true && left == -1 { // reach the limit
+		if left == -1 { // reach the limit
 			c.Writer.WriteHeader(http.StatusTooManyRequests)
 			c.Writer.WriteString(http.StatusText(http.StatusTooManyRequests))
 			return
+		}
+
+		if left >= 0 && erro != nil {
+			c.Writer.WriteHeader(http.StatusOK)
+			c.Writer.WriteString(http.StatusText(http.StatusOK))
 		}
 
 		c.Next()
@@ -46,7 +47,7 @@ func Limit() gin.HandlerFunc {
 }
 
 func main() {
-	limiter, erro = zlimiter.NewLimiter(zlimiter.LIMIT_TYPE_REDIS, driver.RedisInfo{Host: "127.0.0.1:6379", Passwd: "xxxx"})
+	limiter = zlimiter.NewLimiter(zlimiter.LimitMemFixWindow)
 	if erro != nil {
 		log.Fatal(erro.Error())
 	}
