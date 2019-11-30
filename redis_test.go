@@ -1,6 +1,7 @@
 package zlimiter_test
 
 import (
+	"fmt"
 	"math"
 	"sync"
 	"testing"
@@ -416,5 +417,68 @@ func TestRedisBucket(t *testing.T) {
 	left, _ = redisLimit.Get(key)
 	if left != zlimiter.ErrorReturnItemNotExist {
 		t.Error("should not find the key")
+	}
+}
+
+func TestRealRedis(t *testing.T) {
+
+	var left, sucCnt, failCnt int64
+	var erro error
+	ipLocal := getLocalIP()
+
+	var windowTypes = [4]int64{zlimiter.LimitRedisFixWindow, zlimiter.LimitRedisSlideWindow, zlimiter.LimitRedisBucket, zlimiter.LimitRedisToken}
+
+	for _, wdwType := range windowTypes {
+		redisLimit := zlimiter.NewLimiter(int64(wdwType), rds.RedisInfo{Address: "127.0.0.1:6379", Passwd: "test"})
+		sucCnt = 0
+		failCnt = 0
+
+		left, erro = redisLimit.Get(ipLocal)
+		if erro == nil && left == zlimiter.ErrorReturnItemNotExist {
+			redisLimit.Add(ipLocal, 10, 1*time.Second, 30)
+		}
+
+		if wdwType == zlimiter.LimitRedisToken {
+			time.Sleep(1100 * time.Millisecond)
+		}
+
+		var wg sync.WaitGroup
+		for i := 0; i < 23; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				left, erro = redisLimit.Get(ipLocal)
+				if erro != nil {
+					fmt.Println(erro)
+					failCnt++
+				} else if left >= 0 || (left == zlimiter.ErrorReturnBucket && wdwType == zlimiter.LimitRedisBucket) {
+					sucCnt++
+				} else if left < 0 {
+					failCnt++
+				}
+			}()
+		}
+
+		wg.Wait()
+		if wdwType == zlimiter.LimitRedisFixWindow {
+			if sucCnt != 10 && failCnt != 13 {
+				t.Errorf("LimitRedisFixWindow sucCnt != 10 && failCnt != 13,%v %v", sucCnt, failCnt)
+			}
+		} else if wdwType == zlimiter.LimitRedisSlideWindow {
+			if sucCnt != 10 && failCnt != 13 {
+				t.Errorf("LimitRedisSlideWindow sucCnt != 10 && failCnt != 13,%v %v", sucCnt, failCnt)
+			}
+		} else if wdwType == zlimiter.LimitRedisBucket {
+			if sucCnt != 23 {
+				t.Errorf("LimitRedisBucket sucCnt != 23,%v", sucCnt)
+			}
+		} else if wdwType == zlimiter.LimitRedisToken {
+			if sucCnt != 10 && failCnt != 13 {
+				t.Errorf("LimitRedisToken sucCnt != 10 && failCnt != 13,%v %v", sucCnt, failCnt)
+			}
+		}
+
+		redisLimit.Del(ipLocal)
+
 	}
 }

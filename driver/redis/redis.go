@@ -233,10 +233,21 @@ func (r *RedisProxy) Add(key string, limit int64, tmDuration time.Duration, othe
 	conn := r.RedisClient.Get()
 	defer conn.Close()
 
+	var max int64
+
 	if len(others) == 1 {
-		if max, ok := others[0].(int64); ok {
-			return r.Scripts[common.RedisAddScript].SendHash(conn, key, limit, tmDuration.Nanoseconds()/1e3, time.Now().UnixNano()/1e3, max)
+		switch others[0].(type) {
+		case int:
+			max = int64(others[0].(int))
+		case int64:
+			max = others[0].(int64)
+		default:
+			return errors.New(common.ErrorInputParam)
 		}
+
+		//if max, ok := others[0].(int64); ok {
+		return r.Scripts[common.RedisAddScript].SendHash(conn, key, limit, tmDuration.Nanoseconds()/1e3, time.Now().UnixNano()/1e3, max)
+		//}
 	} else if len(others) == 0 {
 		return r.Scripts[common.RedisAddScript].SendHash(conn, key, limit, tmDuration.Nanoseconds()/1e3, time.Now().UnixNano()/1e3)
 	}
@@ -288,9 +299,20 @@ func (r *RedisProxy) Set(key string, limit int64, tmDuration time.Duration, othe
 	defer conn.Close()
 
 	if len(others) == 1 {
-		if max, ok := others[0].(int64); ok {
-			return r.Scripts[common.RedisSetScript].SendHash(conn, key, limit, tmDuration.Nanoseconds()/1e3, time.Now().UnixNano()/1e3, max)
+		var max int64
+
+		switch others[0].(type) {
+		case int:
+			max = int64(others[0].(int))
+		case int64:
+			max = others[0].(int64)
+		default:
+			return errors.New(common.ErrorInputParam)
 		}
+
+		//if max, ok := others[0].(int64); ok {
+		return r.Scripts[common.RedisSetScript].SendHash(conn, key, limit, tmDuration.Nanoseconds()/1e3, time.Now().UnixNano()/1e3, max)
+		//}
 	} else if len(others) == 0 {
 		return r.Scripts[common.RedisSetScript].SendHash(conn, key, limit, tmDuration.Nanoseconds()/1e3, time.Now().UnixNano()/1e3)
 	}

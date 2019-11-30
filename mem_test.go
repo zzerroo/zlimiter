@@ -1,7 +1,10 @@
 package zlimiter_test
 
 import (
+	"fmt"
 	"math"
+	"net"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -340,4 +343,83 @@ func TestBucket(t *testing.T) {
 	if left != zlimiter.ErrorReturnItemNotExist {
 		t.Errorf("%v %v,should not find the key", left, erro)
 	}
+}
+
+func TestReal(t *testing.T) {
+
+	var left, sucCnt, failCnt int64
+	var erro error
+	ipLocal := getLocalIP()
+
+	var windowTypes = [4]int64{zlimiter.LimitMemFixWindow, zlimiter.LimitMemSlideWindow, zlimiter.LimitMemBucket, zlimiter.LimitMemToken}
+
+	for _, wdwType := range windowTypes {
+		memLimit := zlimiter.NewLimiter(int64(wdwType))
+		sucCnt = 0
+		failCnt = 0
+
+		left, erro = memLimit.Get(ipLocal)
+		if erro == nil && left == zlimiter.ErrorReturnItemNotExist {
+			memLimit.Add(ipLocal, 10, 1*time.Second, 30)
+		}
+
+		if wdwType == zlimiter.LimitMemToken {
+			time.Sleep(1 * time.Second)
+		}
+
+		var wg sync.WaitGroup
+		for i := 0; i < 23; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				left, erro = memLimit.Get(ipLocal)
+				if erro != nil {
+					fmt.Println(erro)
+					failCnt++
+				} else if left >= 0 || (left == zlimiter.ErrorReturnBucket && wdwType == zlimiter.LimitMemBucket) {
+					sucCnt++
+				} else if left < 0 {
+					failCnt++
+				}
+			}()
+		}
+
+		wg.Wait()
+		if wdwType == zlimiter.LimitMemFixWindow {
+			if sucCnt != 10 && failCnt != 13 {
+				t.Errorf("sucCnt != 10 && failCnt != 13")
+			}
+		} else if wdwType == zlimiter.LimitMemSlideWindow {
+			if sucCnt != 10 && failCnt != 13 {
+				t.Errorf("sucCnt != 10 && failCnt != 13")
+			}
+		} else if wdwType == zlimiter.LimitMemBucket {
+			if sucCnt != 23 {
+				t.Errorf("sucCnt != 23")
+			}
+		} else if wdwType == zlimiter.LimitMemToken {
+			if sucCnt != 10 && failCnt != 13 {
+				t.Errorf("sucCnt != 10 && failCnt != 13")
+			}
+		}
+
+	}
+}
+
+func getLocalIP() string {
+	addrs, err := net.InterfaceAddrs()
+
+	if err != nil {
+		os.Exit(1)
+	}
+
+	for _, address := range addrs {
+		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				return ipnet.IP.String()
+			}
+		}
+	}
+
+	return ""
 }

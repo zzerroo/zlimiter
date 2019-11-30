@@ -354,15 +354,13 @@ func (t *Token) Add(key string, limits int64, tmDuriation time.Duration, others 
 	}
 
 	// bucket限流中others只包含max信息,支持int和int64类型
-	if len(others) == 1 {
-		switch others[0].(type) {
-		case int:
-			max = int64(others[0].(int))
-		case int64:
-			max = others[0].(int64)
-		default:
-			return errors.New(common.ErrorInputParam)
-		}
+	switch others[0].(type) {
+	case int:
+		max = int64(others[0].(int))
+	case int64:
+		max = others[0].(int64)
+	default:
+		return errors.New(common.ErrorInputParam)
 	}
 
 	// 计算token的产生速度
@@ -410,13 +408,18 @@ func (t *Token) Set(key string, limits int64, tmDuriation time.Duration, others 
 	defer t.rwMut.Unlock()
 
 	var max int64
-	var ok bool
 
-	if len(others) == 1 {
-		max, ok = others[0].(int64)
-		if !ok {
-			return errors.New(common.ErrorInputParam)
-		}
+	if len(others) != 1 {
+		return errors.New(common.ErrorInputParam)
+	}
+
+	switch others[0].(type) {
+	case int:
+		max = int64(others[0].(int))
+	case int64:
+		max = others[0].(int64)
+	default:
+		return errors.New(common.ErrorInputParam)
 	}
 
 	key = t.prefix + key
@@ -493,16 +496,18 @@ func (b *Bucket) Init(...interface{}) error {
 func (b *Bucket) Add(key string, limits int64, tmDuriation time.Duration, others ...interface{}) error {
 	var max int64
 
+	if len(others) != 1 {
+		return errors.New(common.ErrorInputParam)
+	}
+
 	// bucket限流中others只包含max信息,支持int和int64类型
-	if len(others) == 1 {
-		switch others[0].(type) {
-		case int:
-			max = int64(others[0].(int))
-		case int64:
-			max = others[0].(int64)
-		default:
-			return errors.New(common.ErrorInputParam)
-		}
+	switch others[0].(type) {
+	case int:
+		max = int64(others[0].(int))
+	case int64:
+		max = others[0].(int64)
+	default:
+		return errors.New(common.ErrorInputParam)
 	}
 
 	key = b.prefix + key
@@ -539,13 +544,18 @@ func (b *Bucket) Add(key string, limits int64, tmDuriation time.Duration, others
 //		error : 成功则返回nil，否则为相关错误信息
 func (b *Bucket) Set(key string, limits int64, tmDuriation time.Duration, others ...interface{}) error {
 	var max int64
-	var ok bool
 
-	if len(others) == 1 {
-		max, ok = others[0].(int64)
-		if !ok {
-			return errors.New(common.ErrorInputParam)
-		}
+	if len(others) != 1 {
+		return errors.New(common.ErrorInputParam)
+	}
+
+	switch others[0].(type) {
+	case int:
+		max = int64(others[0].(int))
+	case int64:
+		max = others[0].(int64)
+	default:
+		return errors.New(common.ErrorInputParam)
 	}
 
 	key = b.prefix + key

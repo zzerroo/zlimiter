@@ -53,8 +53,8 @@ else
 		retValue = limit - curWdwCnt
 	end
 end
-		
-redis.call('HMSET','2d1b74349305508b-fix'..key,'limit',limit,'duration',duration,'idx',curlIdx,'wdwcnt',curWdwCnt)
+
+redis.call('HMSET','2d1b74349305508b-fix'..key,'idx',curlIdx,'wdwcnt',curWdwCnt)
 return retValue
 `
 
