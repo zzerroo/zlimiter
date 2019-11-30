@@ -51,14 +51,16 @@ type bucketItemCnt struct {
 
 // CacheFixWindow  固定窗口限流，以map存储所有限流规则，map的key为限流规则key
 type CacheFixWindow struct {
-	items map[string]fixWindowItem
-	rwMut sync.RWMutex
+	items  map[string]fixWindowItem
+	rwMut  sync.RWMutex
+	prefix string
 }
 
 // CacheSlideWindow 滑动敞口限流，以map存储所有限流规则，map的key为限流规则key
 type CacheSlideWindow struct {
-	items map[string]slideWindowItem
-	rwMut sync.RWMutex
+	items  map[string]slideWindowItem
+	rwMut  sync.RWMutex
+	prefix string
 }
 
 // Bucket 桶限流
@@ -66,17 +68,20 @@ type Bucket struct {
 	items   map[string]bucketItem
 	itemCnt sync.Map   //	sync map用于同步基于key的bucketItemCnt
 	rwMut   sync.Mutex //	用于同步items的访问
+	prefix  string
 }
 
 // Token token限流
 type Token struct {
-	items map[string]tokenItem
-	rwMut sync.RWMutex //	用于对items的同步访问
+	items  map[string]tokenItem
+	rwMut  sync.RWMutex //	用于对items的同步访问
+	prefix string
 }
 
 // Init 滑动限流窗口的初始化，创建相关map
 func (c *CacheSlideWindow) Init(...interface{}) error {
 	c.items = make(map[string]slideWindowItem)
+	c.prefix = "2d1b74349305508b-slide"
 	return nil
 }
 
@@ -92,6 +97,7 @@ func (c *CacheSlideWindow) Add(key string, limits int64, tmDuriation time.Durati
 	c.rwMut.Lock()
 	defer c.rwMut.Unlock()
 
+	key = c.prefix + key
 	itemTmp := slideWindowItem{
 		item: item{
 			Key:      key,
@@ -116,6 +122,7 @@ func (c *CacheSlideWindow) Set(key string, limits int64, tmDuriation time.Durati
 	c.rwMut.Lock()
 	defer c.rwMut.Unlock()
 
+	key = c.prefix + key
 	itemTmp := slideWindowItem{
 		item: item{
 			Key:      key,
@@ -137,6 +144,7 @@ func (c *CacheSlideWindow) Del(key string) error {
 	c.rwMut.Lock()
 	defer c.rwMut.Unlock()
 
+	key = c.prefix + key
 	delete(c.items, key)
 	return nil
 }
@@ -161,6 +169,8 @@ func (c *CacheSlideWindow) Get(key string) (int64, error) {
 
 	var itemTmp slideWindowItem
 	var ok bool
+
+	key = c.prefix + key
 
 	// 相关key不存在，返回错误common.ErrorInputParam
 	if itemTmp, ok = c.items[key]; !ok {
@@ -195,6 +205,7 @@ func (c *CacheSlideWindow) Get(key string) (int64, error) {
 // Init 创建CacheFixWindow中规则map
 func (c *CacheFixWindow) Init(...interface{}) error {
 	c.items = make(map[string]fixWindowItem)
+	c.prefix = "2d1b74349305508b-fix"
 	return nil
 }
 
@@ -211,6 +222,7 @@ func (c *CacheFixWindow) Add(key string, limits int64, tmDuriation time.Duration
 	c.rwMut.Lock()
 	defer c.rwMut.Unlock()
 
+	key = c.prefix + key
 	itemTmp := fixWindowItem{
 		Idx:    0,
 		CurCnt: 0,
@@ -238,6 +250,7 @@ func (c *CacheFixWindow) Set(key string, limits int64, tmDuriation time.Duration
 	c.rwMut.Lock()
 	defer c.rwMut.Unlock()
 
+	key = c.prefix + key
 	itemTmp := fixWindowItem{
 		Idx:    0,
 		CurCnt: 0,
@@ -261,6 +274,7 @@ func (c *CacheFixWindow) Del(key string) error {
 	c.rwMut.Lock()
 	defer c.rwMut.Unlock()
 
+	key = c.prefix + key
 	delete(c.items, key)
 	return nil
 }
@@ -279,6 +293,8 @@ func (c *CacheFixWindow) Get(key string) (int64, error) {
 
 	var itemTmp fixWindowItem
 	var ok bool
+
+	key = c.prefix + key
 
 	// 如果相关key不存在，则返回ErrorInputParam
 	if itemTmp, ok = c.items[key]; !ok {
@@ -300,8 +316,12 @@ func (c *CacheFixWindow) Get(key string) (int64, error) {
 	}
 
 	// 已经存在的窗口，根据计CurCnt计数剩余请求数
-	left := itemTmp.Limits - itemTmp.CurCnt - 1
 	itemTmp.CurCnt = itemTmp.CurCnt + 1
+	left := itemTmp.Limits - itemTmp.CurCnt
+	if left < 0 {
+		return common.ErrorReturnNoLeft, nil
+	}
+
 	c.items[key] = itemTmp
 	return left, nil
 }
@@ -309,6 +329,7 @@ func (c *CacheFixWindow) Get(key string) (int64, error) {
 // Init 创建Token限流中对应的map
 func (t *Token) Init(...interface{}) error {
 	t.items = make(map[string]tokenItem)
+	t.prefix = "2d1b74349305508b-token"
 	return nil
 }
 
@@ -325,16 +346,23 @@ func (t *Token) Add(key string, limits int64, tmDuriation time.Duration, others 
 	defer t.rwMut.Unlock()
 
 	var max int64
-	var ok bool
+	key = t.prefix + key
 
 	// 校验请求参数，token中应只包含一个值:max
 	if len(others) != 1 {
 		return errors.New(common.ErrorInputParam)
 	}
 
-	max, ok = others[0].(int64)
-	if !ok {
-		return errors.New(common.ErrorInputParam)
+	// bucket限流中others只包含max信息,支持int和int64类型
+	if len(others) == 1 {
+		switch others[0].(type) {
+		case int:
+			max = int64(others[0].(int))
+		case int64:
+			max = others[0].(int64)
+		default:
+			return errors.New(common.ErrorInputParam)
+		}
 	}
 
 	// 计算token的产生速度
@@ -364,6 +392,7 @@ func (t *Token) Del(key string) error {
 	t.rwMut.Lock()
 	defer t.rwMut.Unlock()
 
+	key = t.prefix + key
 	delete(t.items, key)
 	return nil
 }
@@ -390,6 +419,7 @@ func (t *Token) Set(key string, limits int64, tmDuriation time.Duration, others 
 		}
 	}
 
+	key = t.prefix + key
 	createRateNs := (float64(limits) / float64(tmDuriation.Nanoseconds()))
 	itemTmp := tokenItem{
 		item: item{
@@ -418,6 +448,8 @@ func (t *Token) Get(key string) (int64, error) {
 	t.rwMut.Lock()
 	defer t.rwMut.Unlock()
 
+	key = t.prefix + key
+
 	// 相关规则不存在，则返回ErrorInputParam错误
 	itemTmp, ok := t.items[key]
 	if !ok {
@@ -445,6 +477,7 @@ func (t *Token) Get(key string) (int64, error) {
 // Init Bucket限流创建相关map
 func (b *Bucket) Init(...interface{}) error {
 	b.items = make(map[string]bucketItem)
+	b.prefix = "2d1b74349305508b-bucket"
 	return nil
 }
 
@@ -459,16 +492,20 @@ func (b *Bucket) Init(...interface{}) error {
 //		error : 成功则返回nil，否则为相关错误信息
 func (b *Bucket) Add(key string, limits int64, tmDuriation time.Duration, others ...interface{}) error {
 	var max int64
-	var ok bool
 
-	// bucket限流中others只包含max信息
+	// bucket限流中others只包含max信息,支持int和int64类型
 	if len(others) == 1 {
-		max, ok = others[0].(int64)
-		if !ok {
+		switch others[0].(type) {
+		case int:
+			max = int64(others[0].(int))
+		case int64:
+			max = others[0].(int64)
+		default:
 			return errors.New(common.ErrorInputParam)
 		}
 	}
 
+	key = b.prefix + key
 	itemTmp := bucketItem{
 		item: item{
 			Key:      key,
@@ -511,6 +548,7 @@ func (b *Bucket) Set(key string, limits int64, tmDuriation time.Duration, others
 		}
 	}
 
+	key = b.prefix + key
 	itemTmp := bucketItem{
 		item: item{
 			Key:      key,
@@ -541,6 +579,7 @@ func (b *Bucket) Del(key string) error {
 	delete(b.items, key)
 	b.rwMut.Unlock()
 
+	key = b.prefix + key
 	b.itemCnt.Delete(key)
 	return nil
 }
@@ -588,6 +627,7 @@ func (b *Bucket) writeTimeout(ch chan<- struct{}) bool {
 //		int64 : 规则剩余请求数目，<-1000为错误，具体参见common.ErrorReturn*
 //		error : 成功则为nil，否则为对应错误
 func (b *Bucket) Get(key string) (int64, error) {
+	key = b.prefix + key
 	// 获得bucketItemCnt及相应channel
 	itemCntTmp, erro := b.getSyncMap(key)
 	if erro == common.ErrorItemNotExist {
