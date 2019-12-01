@@ -12,6 +12,16 @@
 
 ​	对于一些Open API服务，例如百度地图开放平台、腾讯AI开放平台都提供了基于QPS的计费策略，该计费策略下同样需要限流的处理
 
+# zlimiter
+
+zlimiter是一个基于golang的支持集中式、分布式限流，支持固定窗口、滑动窗口、bucket、token算法的限流器。
+
+在工程中启用使用zlimiter：
+
+`go get github.com/zzerroo/zlimiter`
+
+分布式限流基于redis，所有测试都基于5.0.5版本。此外，分布式版本基于Lua脚本，目前暂不支持redis集群。
+
 # zlimiter支持的限流方式
 
 ## 集中式限流
@@ -101,3 +111,4 @@ redisLimit := zlimiter.NewLimiter(zlimiter.LimitRedisToken, rds.RedisInfo{Addres
 \- [gin](./example/gin/gin.go)
 
 \- [http](./example/http/http.go)
+
