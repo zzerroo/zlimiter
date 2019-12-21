@@ -118,26 +118,26 @@ local limitInfos = redis.call('HMGET','2d1b74349305508b-slide-h'..key,'limit','d
 local limit = tonumber(limitInfos[1])
 local duration = tonumber(limitInfos[2])
 local curIdx = tonumber(limitInfos[3])
+
 if (limit == nil or duration == nil or curIdx == nil) then
 	return -2
 end
 
-redis.call('HSET','2d1b74349305508b-slide-h'..key,'idx',curIdx + 1)
-
 local start = current - duration
-local cnt = redis.call('ZCOUNT','2d1b74349305508b-slide-z'..key, start, current)
-local idxs = redis.call('ZRANGEBYSCORE','2d1b74349305508b-slide-z'..key, start,current)
+local cnt = redis.call('ZCOUNT','2d1b74349305508b-slide-z'..key, start, 2147483647000000)
 
 local retValue = 0
 if (cnt >= limit) then
 	retValue =  -1
 else
-	redis.call('ZADD','2d1b74349305508b-slide-z'..key, current, curIdx)
+	redis.call('ZADD','2d1b74349305508b-slide-z'..key, current, curIdx + 1)
 	retValue = limit - cnt - 1
 end
 
+redis.call('HSET','2d1b74349305508b-slide-h'..key,'idx',curIdx + 1)
+
 -- delete old data
-local idxs = redis.call('ZRANGEBYSCORE','2d1b74349305508b-slide-z'..key, 0,start)
+local idxs = redis.call('ZRANGEBYSCORE','2d1b74349305508b-slide-z'..key, 0, '('..start )
 for i=1,#idxs do
  	redis.call('ZREM','2d1b74349305508b-slide-z'..key, idxs[i])
 end
