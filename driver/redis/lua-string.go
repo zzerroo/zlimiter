@@ -283,8 +283,9 @@ if (calStart == nil or rate == nil or left == nil or max == nil) then
 end
 	
 local retValue = 0
-local curCnt = math.floor((current - calStart)/rate)
-	
+local tmPassed = current - calStart > 0 and current - calStart or 0
+local curCnt = math.floor((tmPassed)/rate)
+
 if (curCnt + left >= max) then
 	left = max
 else
@@ -298,7 +299,7 @@ if (left > 0) then
 else 
 	retValue = -1
 end
-	
+
 redis.call('HMSET','2d1b74349305508b-token'..key,'calstart',calStart,'left',left)
 return retValue
 `
