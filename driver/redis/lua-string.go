@@ -156,7 +156,7 @@ local key = KEYS[1] --key
 local limit = tonumber(ARGV[1]) --限流大小
 local duration = tonumber(ARGV[2]) --时长
 local current = tonumber(ARGV[3]) --current timestamp
-local max = tonumber(ARGV[4]) --current timestamp
+local max = tonumber(ARGV[4]) -- max
 local span = duration/limit
 redis.call('HMSET','2d1b74349305508b-bucket'..key,'limit',limit,'duration',duration,'span',span,'last',0,'max',max,'waitcnt',0)
 `
@@ -188,18 +188,28 @@ local retValue = 0
 if (waitCnt > max) then
 	waitCnt = waitCnt - 1
 	redis.call('HMSET','2d1b74349305508b-bucket'..key,'last',current,'waitcnt',waitCnt)
-	return -1	
+	return -1
 end
 
+waitCnt = waitCnt - 1
 if (last == 0) then
-	waitCnt = waitCnt - 1	
 	redis.call('HMSET','2d1b74349305508b-bucket'..key,'last',current,'waitcnt',waitCnt)
 	return 0
 end
 
-waitCnt = waitCnt - 1
-local tmWait = span - (current - last) % span
-redis.call('HMSET','2d1b74349305508b-bucket'..key,'last',current,'waitcnt',waitCnt)
+local tmWait = 0
+if (last <= current) then
+	if (last + span > current) then
+		redis.call('HMSET','2d1b74349305508b-bucket'..key,'last',last + span,'waitcnt',waitCnt)
+		tmWait = last + span - current
+	else 
+		tmWait = span - (current - last) % span
+		redis.call('HMSET','2d1b74349305508b-bucket'..key,'last',current + tmWait,'waitcnt',waitCnt)
+	end
+else
+	redis.call('HMSET','2d1b74349305508b-bucket'..key,'last',last + span,'waitcnt',waitCnt)
+	tmWait = last + span - current
+end
 return tmWait
 `
 	// BucketCheckAddr : 桶限流check脚本，用于校验当前规则缓存的请求数目是否已经超过了max限制，每次get请求前都应该先调用该脚本

@@ -439,13 +439,13 @@ func TestRealRedis(t *testing.T) {
 		}
 
 		if wdwType == zlimiter.LimitRedisToken {
-			time.Sleep(1100 * time.Millisecond)
+			time.Sleep(1000 * time.Millisecond)
 		}
 
 		var wg sync.WaitGroup
-		for i := 0; i < 23; i++ {
+		for i := 0; i < 13; i++ {
 			wg.Add(1)
-			go func() {
+			go func(i int) {
 				defer wg.Done()
 				left, erro = redisLimit.Get(ipLocal)
 				if erro != nil {
@@ -456,29 +456,28 @@ func TestRealRedis(t *testing.T) {
 				} else if left < 0 {
 					failCnt++
 				}
-			}()
+			}(i)
 		}
 
 		wg.Wait()
 		if wdwType == zlimiter.LimitRedisFixWindow {
-			if sucCnt != 10 && failCnt != 13 {
+			if sucCnt != 10 || failCnt != 3 {
 				t.Errorf("LimitRedisFixWindow sucCnt != 10 && failCnt != 13,%v %v", sucCnt, failCnt)
 			}
 		} else if wdwType == zlimiter.LimitRedisSlideWindow {
-			if sucCnt != 10 && failCnt != 13 {
+			if sucCnt != 10 || failCnt != 3 {
 				t.Errorf("LimitRedisSlideWindow sucCnt != 10 && failCnt != 13,%v %v", sucCnt, failCnt)
 			}
 		} else if wdwType == zlimiter.LimitRedisBucket {
-			if sucCnt != 23 {
-				t.Errorf("LimitRedisBucket sucCnt != 23,%v", sucCnt)
+			if sucCnt != 13 {
+				t.Errorf("LimitRedisBucket sucCnt != 13,%v", sucCnt)
 			}
 		} else if wdwType == zlimiter.LimitRedisToken {
-			if sucCnt != 10 && failCnt != 13 {
+			if sucCnt != 10 || failCnt != 3 {
 				t.Errorf("LimitRedisToken sucCnt != 10 && failCnt != 13,%v %v", sucCnt, failCnt)
 			}
 		}
 
 		redisLimit.Del(ipLocal)
-
 	}
 }
