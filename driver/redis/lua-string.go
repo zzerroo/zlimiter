@@ -69,7 +69,7 @@ local key = KEYS[1] --key
 redis.call('HDEL','2d1b74349305508b-fix'..key,'limit','duration','idx','start','wdwcnt')
 `
 	// SlideAddStr : 滑动窗口限流add脚本，新增一条滑动窗口限流规则。规则中limit、duration表示在duration时间段内限制访问limit次，
-	//	为了提高效率，滑动窗口采用了sortedset进行窗口的滑动(score为时间点)，为了保证member的唯一性 还维护了递增的属性idx
+	//	为了提高效率，滑动窗口采用了sortedset进行窗口的滑动(score为时间点)，为了保证唯一性 还维护了递增的属性idx
 	// Input:
 	//	key : 规则id，实际存储的key前缀为2d1b74349305508b-slide-h，2d1b74349305508b-slide-z
 	// 	limit : 限额数
@@ -102,7 +102,8 @@ redis.call('HDEL','2d1b74349305508b-slide-h'..key,'limit','duration','idx')
 redis.call('ZREMRANGEBYRANK','2d1b74349305508b-slide-z'..key,0,-1)
 `
 	// SlideGetStr : 滑动窗口get脚本, 脚本利用了sortedsort来实现基于时间的排序，每次get请求会根据当前时间current和规则对应的时间段duration 计算当前
-	//	窗口的开始时间start，并根据sortedset中score值计算当前窗口已放行的请求数cnt，如果cnt>limit(限额数) 则返回-1，否则返回0表示放行
+	//	窗口的开始时间start，并根据sortedset中score值计算当前窗口已放行的请求数cnt，如果cnt>limit(限额数) 则返回-1，否则返回0表示放行。
+	//	对于请求中可能出现的失序的访问，在计算当前窗口期中请求访问量时候，计算的是[start,+无穷间)的请求量
 	// Input:
 	// 	key : 规则key
 	// 	current : 当前时间 (μs)
