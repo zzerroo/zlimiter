@@ -34,6 +34,7 @@ func Limit() gin.HandlerFunc {
 		if left == -1 { // reach the limit
 			c.Writer.WriteHeader(http.StatusTooManyRequests)
 			c.Writer.WriteString(http.StatusText(http.StatusTooManyRequests))
+			c.Abort()
 			return
 		}
 
